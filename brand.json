@@ -1,0 +1,33 @@
+{
+  "$comment": "The one file to change when cloning this shop into a new brand. Read by the storefront (name, colours, page <head>), the API (QPay invoices, Airalo orders, support chat) and scripts/og-image.py. See CLONING.md.",
+  "name": "Хязгааргүй",
+  "tagline": "eSIM",
+  "siteTitle": "Хязгааргүй eSIM — хязгааргүй дататай аял",
+  "shareTitle": "Хязгааргүй eSIM — Мянган бээрийн аялал нэг алхмаас эхэлдэг",
+  "description": "200+ улсад хязгааргүй дататай eSIM. QPay-ээр төлөөд QR кодоо шууд аваарай.",
+  "invoicePrefix": "HZ",
+  "qpayBranchCode": "HYZGAARGUI",
+  "shareCard": {
+    "$comment": "Text on public/og-image.jpg, the picture shown when a link to the site is shared. Rebuild it with: python scripts/og-image.py",
+    "badge": "200+ улс  ·  Хязгааргүй дата",
+    "headline": [
+      "Мянган бээрийн",
+      "аялал нэг алхмаас"
+    ],
+    "headlineAccent": "эхэлдэг.",
+    "lines": [
+      "200+ улсад хязгааргүй дататай eSIM.",
+      "QPay-ээр төлөөд QR кодоо шууд аваарай."
+    ],
+    "button": "eSIM авах  →"
+  },
+  "colors": {
+    "brand": "#D7141A",
+    "brandHover": "#B50F14",
+    "brandBorder": "#F6C2C4",
+    "brandSoft": "#FDF0F0",
+    "brandTint": "#FBE0E1",
+    "brandInk": "#A30E13",
+    "onBrand": "#FFFFFF"
+  }
+}

@@ -1,0 +1,5 @@
+[phases.setup]
+nixPkgs = ["nodejs_22", "pnpm-10_x", "openssl"]
+
+[phases.install]
+cmds = ["pnpm install --no-frozen-lockfile"]

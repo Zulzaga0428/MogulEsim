@@ -1,0 +1,18 @@
+packages:
+  "zustand": "State management for language switching (bilingual MN/EN support)"
+  "react-hook-form": "Form handling for checkout and auth"
+  "@hookform/resolvers": "Zod validation integration for forms"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility to resolve Tailwind CSS class conflicts"
+
+images:
+  - path: "artifacts/esim-store/public/images/hero-bg.png"
+    description: "Extremely subtle, clean, minimal white and very light facebook-blue abstract geometric background, high key, professional, corporate, practically white"
+    aspect_ratio: "16:9"
+  - path: "artifacts/esim-store/public/images/logo.png"
+    description: "Minimalist corporate geometric logo mark for AVAESIM in Facebook blue (#1877F2) on a transparent background, clean vector style"
+    aspect_ratio: "1:1"
+
+notes:
+  - Using generated React Query hooks from @workspace/api-client-react
+  - Defaulting language to Mongolian per requirements
