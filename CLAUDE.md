@@ -26,7 +26,7 @@ pnpm workspace monorepo, TypeScript throughout.
 | `lib/api-client-react` | Generated React Query hooks |
 | `scripts` | Utility scripts, run via `pnpm --filter @workspace/scripts run <name>` |
 
-External services: **Airalo** (eSIM supply), **QPay v2** (payment),
+External services: **Airalo** (eSIM supply), **eSimerge** (China unlimited, see below), **QPay v2** (payment),
 **Cloudflare Images** (hero slides), **OpenAI** (support chat). Accounts are our own.
 
 ## Commands
@@ -145,6 +145,26 @@ attempt counts are in memory on purpose, so a restart grants fresh attempts. A
 claim older than fifteen minutes is treated as abandoned and reclaimed, with a
 warning — a crash between Airalo issuing a SIM and the row being written would
 otherwise be invisible, and the retry would buy a second SIM.
+
+## eSimerge (second supplier)
+
+`lib/esimerge.ts`. China's unlimited packages come from eSimerge instead of
+Airalo (`ESIMERGE_UNLIMITED` maps slug → country code); fixed-GB packages stay
+on Airalo. Our package ids for its plans start with `esm:` — that prefix is
+how pricing (`resolvePriceInMnt`) and `fulfillOrder()` pick the supplier.
+
+- Auth: `ESIMERGE_API_KEY` (Bearer). `esm_sk_test_…` is the sandbox key: its
+  catalog is 8 demo plans with no China, so with it the site silently stays on
+  Airalo. The swap happens on its own once a live key is set.
+- Plans with a `fair_usage` value are skipped — we only sell real unlimited.
+- Orders are synchronous; the QR comes back as an `LPA:1$…` string and is
+  stored as a PNG data URL (`qrcode` package) because every page renders
+  `esimQrCode` with `<img src>`.
+- Idempotency-Key is `<invoicePrefix>-order-<id>`, stable per order, so a
+  sweeper retry gets the same eSIM back (verified in sandbox).
+- Not wired yet: top-up and usage (they need eSimerge's eSIM id, which the
+  orders table doesn't store). Both answer "not available" for `esm:` orders.
+- China's flat price `CHINA_FLAT` is 20% over `ASIA_FLAT` (2026-11-08).
 
 ## Auth
 

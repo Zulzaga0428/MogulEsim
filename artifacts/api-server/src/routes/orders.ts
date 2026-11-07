@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, ordersTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { getSimUsage } from "../lib/airalo";
+import { isEsimergePackage } from "../lib/esimerge";
 import { runFulfillment } from "../lib/fulfillment.js";
 import { requireAdmin } from "../lib/admin.js";
 import { verifyUserToken } from "../lib/user-auth.js";
@@ -160,6 +161,12 @@ router.get("/orders/:id/usage", async (req: Request, res: Response) => {
     }
     if (!order.esimIccid) {
       res.status(400).json({ error: "bad_request", message: "Order has no eSIM yet" });
+      return;
+    }
+
+    if (isEsimergePackage(order.packageId)) {
+      // eSimerge reports usage by its own eSIM id, which is not stored yet.
+      res.status(501).json({ error: "not_supported", message: "Usage is not available for this eSIM yet" });
       return;
     }
 

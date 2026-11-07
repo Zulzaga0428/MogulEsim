@@ -2,6 +2,7 @@ import { BRAND } from "../brand.js";
 import { db, ordersTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { createEsimOrder, createTopupOrder } from "./airalo.js";
+import { isEsimergePackage, issueEsim, qrDataUrl } from "./esimerge.js";
 
 /**
  * Held by whichever worker is currently buying from Airalo for an order.
@@ -52,6 +53,22 @@ export async function fulfillOrder(order: FulfillableOrder): Promise<FulfillResu
     // A top-up reuses the SIM the customer already installed, so there is no
     // new QR code to hand back.
     return { iccid: order.esimIccid, qrCodeUrl: null, topup: true };
+  }
+
+  if (isEsimergePackage(order.packageId)) {
+    console.log(`[eSimerge] Fulfilling eSIM for order #${order.id}, package: ${order.packageId}`);
+    // Same key on every attempt for this order: a retry after a timeout or a
+    // crash gets back the eSIM already issued instead of a second one. The
+    // "-order-" infix keeps it inside the 8–128 characters eSimerge accepts.
+    const esim = await issueEsim(order.packageId, `${BRAND.invoicePrefix}-order-${order.id}`, `${BRAND.name} #${order.id}`);
+    const qrCodeUrl = await qrDataUrl(esim.qr_code);
+
+    await db.update(ordersTable)
+      .set({ status: "completed", esimIccid: esim.iccid, esimQrCode: qrCodeUrl, updatedAt: new Date() })
+      .where(eq(ordersTable.id, order.id));
+
+    console.log(`[eSimerge] eSIM fulfilled for order #${order.id} — ICCID: ${esim.iccid}`);
+    return { iccid: esim.iccid, qrCodeUrl, topup: false };
   }
 
   console.log(`[Airalo] Fulfilling eSIM for order #${order.id}, package: ${order.packageId}`);

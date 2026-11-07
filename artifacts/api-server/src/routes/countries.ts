@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getPackagesByCountry, type AiraloPackage, getPackagesIndex } from "../lib/airalo";
+import { ESIMERGE_UNLIMITED, ESM_PREFIX, getUnlimitedPlans, type EsimergePlan } from "../lib/esimerge";
 import { WORLD_COUNTRIES, flagEmoji, slugFromName } from "../lib/world-countries";
 
 const router: IRouter = Router();
@@ -99,12 +100,18 @@ const ASIA_FLAT = { 3: 32000, 5: 47500, 7: 67500, 10: 89500, 15: 143000, 30: 268
 // The cost-floor guard keeps expensive markets (Russia, Canada, ...) on formula.
 const EURO_FLAT = { 3: 35000, 5: 51500, 7: 65500, 10: 83500, 15: 158500, 30: 224500 };
 
+// China, 20% over the Asia flat price (2026-11-08): its unlimited plans come
+// from eSimerge, which costs more than Airalo but covers Unicom + Telecom,
+// Hong Kong and Macau, with apps reachable without a VPN. Every step clears
+// the 1.1x cost floor against eSimerge's net price (30D: $59.02).
+const CHINA_FLAT = { 3: 38500, 5: 57000, 7: 81000, 10: 107500, 15: 171500, 30: 321500 };
+
 const PRICE_OVERRIDES: Record<string, Record<number, number>> = {
   "japan":       { 3: 34000, 5: 49500, 7: 69500, 10: 91500, 15: 145000, 30: 270000 },
   "south-korea": { 3: 34000, 5: 49500, 7: 69500, 10: 91500, 15: 145000, 30: 270000 },
   "asialink":    { 3: 34000, 5: 49500, 7: 69500, 10: 91500, 15: 145000, 30: 270000 },
   "eurolink":    { 3: 37000, 5: 53500, 7: 67500, 10: 85500, 15: 160500, 30: 226500 },
-  "china":       ASIA_FLAT,
+  "china":       CHINA_FLAT,
   "thailand":    ASIA_FLAT,
   "vietnam":     ASIA_FLAT,
   "singapore":   ASIA_FLAT,
@@ -204,6 +211,47 @@ function convertAiraloPackage(p: AiraloPackage, countrySlug: string, index: numb
     voice: p.voice,
     sms: p.text,
   };
+}
+
+function convertEsimergePlan(p: EsimergePlan, countrySlug: string): Package {
+  return {
+    id: `${countrySlug}-esm-${p.validity_days}d`,
+    packageId: ESM_PREFIX + p.id,
+    name: p.name,
+    data: "Unlimited",
+    dataAmount: -1,
+    validity: p.validity_days,
+    price: p.price_usd,
+    currency: "USD",
+    priceInMnt: overriddenPrice(countrySlug, p.validity_days, true, p.price_usd) ?? priceFromUsd(p.price_usd),
+    speed: "4G/5G",
+    isUnlimited: true,
+    networkType: "LTE/5G",
+    // Top-ups for these SIMs are not wired up yet (they need eSimerge's own
+    // eSIM id, which the orders table does not store).
+    rechargeable: false,
+  };
+}
+
+/**
+ * For countries listed in ESIMERGE_UNLIMITED, swap Airalo's unlimited packages
+ * for eSimerge's. Fixed-data packages stay on Airalo. When eSimerge has
+ * nothing to offer (no key, sandbox key, outage) Airalo's list is returned
+ * unchanged, so the country never goes empty.
+ */
+async function withEsimergeUnlimited(slug: string, packages: Package[]): Promise<Package[]> {
+  const code = ESIMERGE_UNLIMITED[slug];
+  if (!code) return packages;
+  try {
+    const plans = await getUnlimitedPlans(code);
+    if (plans.length === 0) return packages;
+    const esm = plans.map((p) => convertEsimergePlan(p, slug));
+    return [...packages.filter((p) => !p.isUnlimited), ...esm]
+      .sort((a, b) => a.validity - b.validity || a.dataAmount - b.dataAmount);
+  } catch (err) {
+    console.error(`[eSimerge] Catalog fetch failed for ${slug}, keeping Airalo:`, err);
+    return packages;
+  }
 }
 
 type Package = {
@@ -787,7 +835,7 @@ router.get("/countries/:slug/packages", async (req, res) => {
     }
     // Sort by validity days, then by data amount
     const sorted = airaloPackages.sort((a, b) => a.day - b.day || a.amount - b.amount);
-    const packages = sorted.map((p, i) => convertAiraloPackage(p, slug, i));
+    const packages = await withEsimergeUnlimited(slug, sorted.map((p, i) => convertAiraloPackage(p, slug, i)));
     res.json({ country: { ...country, packageCount: packages.length }, packages });
   } catch (err) {
     console.error(`[Airalo] Package fetch failed for ${slug}, using fallback:`, err);

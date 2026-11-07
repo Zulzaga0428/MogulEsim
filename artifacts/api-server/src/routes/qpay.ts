@@ -4,6 +4,7 @@ import { db, ordersTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { createInvoice, checkPayment } from "../lib/qpay";
 import { findAiraloPackage, getSimTopups } from "../lib/airalo";
+import { findEsimergePlan, isEsimergePackage } from "../lib/esimerge";
 import { runFulfillment, type FulfillableOrder } from "../lib/fulfillment.js";
 import { findLocalPackage, overriddenPrice, priceFromUsd, slugForCountryCode } from "./countries";
 import { verifyUserToken } from "../lib/user-auth.js";
@@ -21,6 +22,20 @@ function getCallbackBase(): string {
 // Resolve the authoritative price for a package on the server. The client's
 // priceInMnt is display-only and must never decide what the customer pays.
 async function resolvePriceInMnt(packageId: string): Promise<number | null> {
+  // eSimerge packages are priced from eSimerge's live catalog only. Falling
+  // through to Airalo or the local table could never match an "esm:" id, and
+  // a plan no longer in the catalog must not be sold.
+  if (isEsimergePackage(packageId)) {
+    try {
+      const found = await findEsimergePlan(packageId);
+      if (!found) return null;
+      const { plan, slug } = found;
+      return overriddenPrice(slug, plan.validity_days, true, plan.price_usd) ?? priceFromUsd(plan.price_usd);
+    } catch (err) {
+      console.error(`[QPay] eSimerge price lookup failed for ${packageId}:`, err);
+      return null;
+    }
+  }
   try {
     const found = await findAiraloPackage(packageId);
     if (found) {
@@ -168,6 +183,13 @@ router.get("/qpay/topups/:orderId", async (req: Request, res: Response) => {
       return;
     }
 
+    if (isEsimergePackage(order.packageId)) {
+      // Top-ups for eSimerge SIMs are not wired up yet; asking Airalo about
+      // an ICCID it never issued would only fail.
+      res.json({ topups: [] });
+      return;
+    }
+
     const topups = await getSimTopups(order.esimIccid);
     const priced = topups
       .map((t) => ({
@@ -211,6 +233,11 @@ router.post("/qpay/topup", async (req: Request, res: Response) => {
     }
     if (parent.status !== "completed" || !parent.esimIccid) {
       res.status(400).json({ error: "bad_request", message: "Order has no active eSIM to top up" });
+      return;
+    }
+
+    if (isEsimergePackage(parent.packageId)) {
+      res.status(400).json({ error: "bad_request", message: "Top-up is not available for this eSIM yet" });
       return;
     }
 
