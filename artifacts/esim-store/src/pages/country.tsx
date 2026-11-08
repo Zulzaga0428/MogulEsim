@@ -271,7 +271,7 @@ export default function CountryPackages() {
               </p>
             )}
             {activeTab === 'daily' ? (
-              <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {dailyGroups.map((group) => {
                   const chosen = group.find(p => p.id === selected);
                   const shown = chosen ?? group[0];
@@ -279,48 +279,53 @@ export default function CountryPackages() {
                   return (
                     <div
                       key={group[0].id}
-                      className={`rounded-2xl bg-white p-3 ring-1 transition-shadow ${chosen ? 'ring-2 ring-brand' : 'ring-black/[0.07]'}`}
+                      className={`flex flex-col rounded-2xl p-3 transition-all ${
+                        chosen
+                          ? 'bg-brand-soft ring-2 ring-brand shadow-[0_10px_24px_color-mix(in_srgb,var(--brand)_18%,transparent)]'
+                          : 'bg-white ring-1 ring-black/[0.07] shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
+                      }`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="flex items-center gap-1.5 text-[15px] font-bold text-foreground">
-                            <CalendarDays className="h-4 w-4 text-brand" />
-                            {shown.data} / {lang === 'mn' ? 'өдөр' : 'day'}
-                          </p>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {after
-                              ? (lang === 'mn' ? `Дараа нь ${after} хурдтай` : `Then ${after}`)
-                              : shown.networkType}
-                          </p>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-base font-extrabold leading-tight text-foreground">
-                            {chosen ? formatCurrency(chosen.priceInMnt) : `${formatCurrency(group[0].priceInMnt)}${lang === 'mn' ? '-с' : '+'}`}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            {formatCurrency(Math.round(shown.priceInMnt / shown.validity / 100) * 100)}/{lang === 'mn' ? 'хоног' : 'day'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-2.5 flex flex-wrap gap-1.5">
+                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-[#F4F4F5] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                        <CalendarDays className="h-3 w-3" /> {lang === 'mn' ? 'Өдөр бүр' : 'Daily'}
+                      </span>
+                      <p className="mt-2 font-display text-[22px] font-extrabold leading-none text-foreground">
+                        {shown.data}
+                        <span className="ml-1 text-xs font-semibold text-muted-foreground">/ {lang === 'mn' ? 'өдөр' : 'day'}</span>
+                      </p>
+                      <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                        {after
+                          ? (lang === 'mn' ? `Дараа нь ${after}` : `Then ${after}`)
+                          : shown.networkType}
+                      </p>
+
+                      <div className="mt-2.5 grid grid-cols-4 gap-1">
                         {group.map(p => (
                           <button
                             key={p.id}
                             onClick={() => setSelected(p.id)}
-                            className={`min-w-[44px] rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors ${
+                            className={`rounded-lg py-1.5 text-[11px] font-bold transition-colors ${
                               selected === p.id ? 'bg-brand text-on-brand' : 'bg-[#F4F4F5] text-foreground hover:bg-[#EAEAEC]'
                             }`}
                           >
-                            {p.validity}{lang === 'mn' ? ' хоног' : 'd'}
+                            {p.validity}
                           </button>
                         ))}
                       </div>
+                      <p className="mt-1 text-center text-[10px] text-muted-foreground">
+                        {lang === 'mn' ? 'хоног сонгох' : 'pick days'}
+                      </p>
+
+                      <p className="mt-auto pt-2 text-base font-extrabold leading-tight text-brand">
+                        {chosen
+                          ? formatCurrency(chosen.priceInMnt)
+                          : `${formatCurrency(group[0].priceInMnt)}${lang === 'mn' ? '-с' : '+'}`}
+                      </p>
                     </div>
                   );
                 })}
               </div>
             ) : (
-            <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-black/[0.07] divide-y divide-black/[0.06]">
+            <div className="grid grid-cols-2 gap-3">
               {visiblePkgs.map((pkg) => {
                 const isSelected = selected === pkg.id;
                 const perks = pkg as { rechargeable?: boolean; voice?: number };
@@ -331,51 +336,49 @@ export default function CountryPackages() {
                   <button
                     key={pkg.id}
                     onClick={() => setSelected(pkg.id)}
-                    className={`flex w-full items-center gap-3 px-3 py-3 text-left transition-colors ${
-                      isSelected ? 'bg-brand-soft' : 'hover:bg-[#FAFAFA]'
+                    className={`relative flex flex-col rounded-2xl p-3 text-left transition-all active:scale-[0.98] ${
+                      isSelected
+                        ? 'bg-brand-soft ring-2 ring-brand shadow-[0_10px_24px_color-mix(in_srgb,var(--brand)_18%,transparent)]'
+                        : 'bg-white ring-1 ring-black/[0.07] shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(0,0,0,0.08)]'
                     }`}
                   >
-                    {/* Days badge */}
-                    <div className={`flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl ${
+                    {/* Radio */}
+                    <span className={`absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors ${
+                      isSelected ? 'border-brand bg-brand text-on-brand' : 'border-black/15 bg-white'
+                    }`}>
+                      {isSelected && <Check className="h-3 w-3 stroke-[3.5]" />}
+                    </span>
+
+                    {/* Days pill */}
+                    <span className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${
                       isSelected ? 'bg-brand text-on-brand' : 'bg-[#F4F4F5] text-foreground'
                     }`}>
-                      <span className="font-display text-lg font-extrabold leading-none">{pkg.validity}</span>
-                      <span className={`mt-0.5 text-[10px] font-medium ${isSelected ? 'text-on-brand/80' : 'text-muted-foreground'}`}>
-                        {lang === 'mn' ? 'хоног' : pkg.validity === 1 ? 'day' : 'days'}
-                      </span>
-                    </div>
+                      {pkg.validity} {lang === 'mn' ? 'хоног' : pkg.validity === 1 ? 'day' : 'days'}
+                    </span>
 
                     {/* What you get */}
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-1.5 text-[15px] font-bold text-foreground">
-                        {pkg.isUnlimited
-                          ? <><Infinity className="h-4 w-4 stroke-[2.5] text-brand" /> {lang === 'mn' ? 'Хязгааргүй' : 'Unlimited'}</>
-                          : <><Database className="h-3.5 w-3.5 text-muted-foreground" /> {pkg.data}</>}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {[
-                          pkg.networkType,
-                          perks.rechargeable ? (lang === 'mn' ? 'Цэнэглэдэг' : 'Top-up') : null,
-                          perks.voice != null && perks.voice > 0 ? (lang === 'mn' ? 'Дугаартай' : 'Voice') : null,
-                        ].filter(Boolean).join(' · ')}
-                      </p>
-                    </div>
+                    <p className="mt-2.5 flex items-center gap-1.5 font-display text-[22px] font-extrabold leading-none text-foreground">
+                      {pkg.isUnlimited
+                        ? <><Infinity className="h-6 w-6 stroke-[2.5] text-brand" /><span className="text-lg">{lang === 'mn' ? 'Хязгааргүй' : 'Unlimited'}</span></>
+                        : pkg.data}
+                    </p>
+                    <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                      {[
+                        pkg.networkType,
+                        perks.rechargeable ? (lang === 'mn' ? 'Цэнэглэдэг' : 'Top-up') : null,
+                        perks.voice != null && perks.voice > 0 ? (lang === 'mn' ? 'Дугаартай' : 'Voice') : null,
+                      ].filter(Boolean).join(' · ')}
+                    </p>
 
                     {/* Price */}
-                    <div className="shrink-0 text-right">
-                      <p className="text-base font-extrabold leading-tight text-foreground">{formatCurrency(pkg.priceInMnt)}</p>
+                    <div className="mt-auto pt-3">
+                      <p className="text-base font-extrabold leading-tight text-brand">{formatCurrency(pkg.priceInMnt)}</p>
                       {perDay && (
                         <p className="text-[11px] text-muted-foreground">
                           {formatCurrency(perDay)}/{lang === 'mn' ? 'хоног' : 'day'}
                         </p>
                       )}
                     </div>
-
-                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-                      isSelected ? 'border-brand bg-brand text-on-brand' : 'border-black/15'
-                    }`}>
-                      {isSelected && <Check className="h-3 w-3 stroke-[3.5]" />}
-                    </span>
                   </button>
                 );
               })}
