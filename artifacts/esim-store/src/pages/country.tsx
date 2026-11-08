@@ -5,7 +5,7 @@ import { useAuth, currentUser } from '@/hooks/use-auth';
 import { AuthModal } from '@/components/auth-modal';
 import { useListCountryPackages } from '@workspace/api-client-react';
 import { formatCurrency } from '@/lib/utils';
-import { ArrowLeft, Infinity, Wifi, CheckCircle2, Clock, Database, RefreshCw, Phone, Check, QrCode, Smartphone } from 'lucide-react';
+import { ArrowLeft, Infinity, Wifi, Clock, Database, Check, QrCode, Smartphone } from 'lucide-react';
 
 const COMING_SOON_SLUGS = new Set(['russia']);
 
@@ -84,6 +84,13 @@ export default function CountryPackages() {
   const country = data?.country;
   const packages = data?.packages || [];
   const selectedPkg = packages.find(p => p.id === selected);
+  const unlimitedPkgs = packages.filter(p => p.isUnlimited);
+  const fixedPkgs = packages.filter(p => !p.isUnlimited);
+  const [tab, setTab] = useState<'unlimited' | 'fixed'>('unlimited');
+  // Unlimited first — it is what the shop is named for; fall back to fixed
+  // when a country has none.
+  const activeTab = unlimitedPkgs.length === 0 ? 'fixed' : fixedPkgs.length === 0 ? 'unlimited' : tab;
+  const visiblePkgs = activeTab === 'unlimited' ? unlimitedPkgs : fixedPkgs;
 
   function goToCheckout() {
     if (!selectedPkg || !country) return;
@@ -178,7 +185,7 @@ export default function CountryPackages() {
         </h1>
         <div className="flex items-center gap-1.5 mt-1">
           <Wifi className="w-3.5 h-3.5 text-foreground stroke-[2]" />
-          <span className="text-foreground text-xs font-bold">Airalo eSIM</span>
+          <span className="text-foreground text-xs font-bold">4G/5G eSIM</span>
           <span className="text-muted-foreground text-xs">· {packages.length} {lang === 'mn' ? 'багц' : 'plans'}</span>
         </div>
         <p className="text-muted-foreground/60 text-xs mt-1.5">
@@ -214,66 +221,87 @@ export default function CountryPackages() {
             </Link>
           </div>
         ) : packages.length > 0 ? (
-          <div className="grid grid-cols-2 gap-3">
-            {packages.map((pkg) => {
-              const isSelected = selected === pkg.id;
-              return (
-                <button
-                  key={pkg.id}
-                  onClick={() => setSelected(pkg.id)}
-                  className={`relative w-full overflow-hidden rounded-2xl bg-white text-left transition-all active:scale-[0.98] ${
-                    isSelected
-                      ? 'ring-2 ring-brand shadow-[0_10px_24px_color-mix(in_srgb,var(--brand)_22%,transparent)]'
-                      : 'ring-1 ring-black/[0.07] shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(0,0,0,0.08)]'
-                  }`}
-                >
-                  {/* Data band: red for Unlimited, the shop's one big promise;
-                      ink for capped plans. */}
-                  <div className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wide ${
-                    pkg.isUnlimited ? 'bg-brand text-on-brand' : 'bg-[#1F1F1F] text-white'
-                  }`}>
-                    {pkg.isUnlimited
-                      ? <><Infinity className="h-3.5 w-3.5 stroke-[3]" /> {lang === 'mn' ? 'Хязгааргүй' : 'Unlimited'}</>
-                      : <><Database className="h-3 w-3" /> {pkg.data}</>}
-                  </div>
+          <>
+            {/* Unlimited / fixed tabs, only when the country sells both. */}
+            {unlimitedPkgs.length > 0 && fixedPkgs.length > 0 && (
+              <div className="mb-3 inline-flex rounded-2xl bg-secondary p-1">
+                {([
+                  ['unlimited', <Infinity key="i" className="h-4 w-4 stroke-[2.5]" />, lang === 'mn' ? 'Хязгааргүй' : 'Unlimited', unlimitedPkgs.length],
+                  ['fixed', <Database key="d" className="h-3.5 w-3.5" />, lang === 'mn' ? 'Тогтмол дата' : 'Fixed data', fixedPkgs.length],
+                ] as const).map(([key, icon, label, count]) => (
+                  <button
+                    key={key}
+                    onClick={() => setTab(key)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold transition-all ${
+                      activeTab === key ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {icon} {label}
+                    <span className={`text-[11px] font-semibold ${activeTab === key ? 'text-brand' : 'text-muted-foreground/70'}`}>{count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
-                  {isSelected && (
-                    <span className="absolute right-2 top-9 flex h-5 w-5 items-center justify-center rounded-full bg-brand text-on-brand">
-                      <Check className="h-3 w-3 stroke-[3.5]" />
-                    </span>
-                  )}
-
-                  <div className="flex flex-col gap-1.5 p-3">
-                    <div>
-                      <span className="font-display text-2xl font-extrabold leading-none text-foreground">
-                        {pkg.validity}
-                      </span>
-                      <span className="ml-1 text-xs text-muted-foreground">
-                        {lang === 'mn' ? 'хоног' : 'days'}
+            <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-black/[0.07] divide-y divide-black/[0.06]">
+              {visiblePkgs.map((pkg) => {
+                const isSelected = selected === pkg.id;
+                const perks = pkg as { rechargeable?: boolean; voice?: number };
+                const perDay = pkg.validity > 1 ? Math.round(pkg.priceInMnt / pkg.validity / 100) * 100 : null;
+                return (
+                  <button
+                    key={pkg.id}
+                    onClick={() => setSelected(pkg.id)}
+                    className={`flex w-full items-center gap-3 px-3 py-3 text-left transition-colors ${
+                      isSelected ? 'bg-brand-soft' : 'hover:bg-[#FAFAFA]'
+                    }`}
+                  >
+                    {/* Days badge */}
+                    <div className={`flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl ${
+                      isSelected ? 'bg-brand text-on-brand' : 'bg-[#F4F4F5] text-foreground'
+                    }`}>
+                      <span className="font-display text-lg font-extrabold leading-none">{pkg.validity}</span>
+                      <span className={`mt-0.5 text-[10px] font-medium ${isSelected ? 'text-on-brand/80' : 'text-muted-foreground'}`}>
+                        {lang === 'mn' ? 'хоног' : pkg.validity === 1 ? 'day' : 'days'}
                       </span>
                     </div>
 
-                    {/* Network and perks as quiet grey chips. */}
-                    {(() => {
-                      const perks = pkg as { rechargeable?: boolean; voice?: number; sms?: number };
-                      const chip = 'inline-flex items-center gap-1 rounded-md bg-[#F2F2F2] px-1.5 py-0.5 text-[10px] font-medium text-[#555]';
-                      return (
-                        <div className="flex flex-wrap gap-1">
-                          {pkg.networkType && <span className={chip}><Wifi className="h-2.5 w-2.5" /> {pkg.networkType}</span>}
-                          {perks.rechargeable && <span className={chip}><RefreshCw className="h-2.5 w-2.5" /> {lang === 'mn' ? 'Цэнэглэдэг' : 'Top-up'}</span>}
-                          {perks.voice != null && perks.voice > 0 && <span className={chip}><Phone className="h-2.5 w-2.5" /> {lang === 'mn' ? 'Дугаартай' : 'Voice+SMS'}</span>}
-                        </div>
-                      );
-                    })()}
+                    {/* What you get */}
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-1.5 text-[15px] font-bold text-foreground">
+                        {pkg.isUnlimited
+                          ? <><Infinity className="h-4 w-4 stroke-[2.5] text-brand" /> {lang === 'mn' ? 'Хязгааргүй' : 'Unlimited'}</>
+                          : <><Database className="h-3.5 w-3.5 text-muted-foreground" /> {pkg.data}</>}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {[
+                          pkg.networkType,
+                          perks.rechargeable ? (lang === 'mn' ? 'Цэнэглэдэг' : 'Top-up') : null,
+                          perks.voice != null && perks.voice > 0 ? (lang === 'mn' ? 'Дугаартай' : 'Voice') : null,
+                        ].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
 
-                    <p className="mt-1 text-base font-extrabold leading-tight text-brand">
-                      {formatCurrency(pkg.priceInMnt)}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                    {/* Price */}
+                    <div className="shrink-0 text-right">
+                      <p className="text-base font-extrabold leading-tight text-foreground">{formatCurrency(pkg.priceInMnt)}</p>
+                      {perDay && (
+                        <p className="text-[11px] text-muted-foreground">
+                          {formatCurrency(perDay)}/{lang === 'mn' ? 'хоног' : 'day'}
+                        </p>
+                      )}
+                    </div>
+
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                      isSelected ? 'border-brand bg-brand text-on-brand' : 'border-black/15'
+                    }`}>
+                      {isSelected && <Check className="h-3 w-3 stroke-[3.5]" />}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
         ) : (
           <div className="text-center py-16 bg-secondary/20 rounded-2xl border border-border/50">
             <p className="text-muted-foreground text-sm">{t('no_packages')}</p>

@@ -24,10 +24,6 @@ export const ESIMERGE_UNLIMITED: Record<string, string> = {
   china: "CN",
 };
 
-// The validity lengths the site sells, so a supplier with 30 day-by-day plans
-// does not flood the package list.
-const SOLD_DAYS = new Set([3, 5, 7, 10, 15, 30]);
-
 export interface EsimergePlan {
   id: string;
   name: string;
@@ -108,7 +104,7 @@ async function fetchUnlimited(countryCode: string): Promise<EsimergePlan[]> {
     (p.country_code === countryCode || p.destination_code === countryCode) &&
     // A plan with a fair-usage cap is not what we sell as unlimited.
     !p.fair_usage &&
-    SOLD_DAYS.has(p.validity_days) &&
+    p.validity_days >= 1 && p.validity_days <= 30 &&
     p.price_usd > 0,
   );
 

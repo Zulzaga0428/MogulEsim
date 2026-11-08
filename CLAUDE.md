@@ -165,6 +165,9 @@ how pricing (`resolvePriceInMnt`) and `fulfillOrder()` pick the supplier.
 - Not wired yet: top-up and usage (they need eSimerge's eSIM id, which the
   orders table doesn't store). Both answer "not available" for `esm:` orders.
 - China's flat price `CHINA_FLAT` is 20% over `ASIA_FLAT` (2026-11-08).
+- Every unlimited length 1–30 days is sold. Lengths missing from a flat
+  table get a price on the straight line between their two neighbours
+  (`interpolatedFlat`); outside the table (1–2 days) the formula applies.
 
 ## Auth
 

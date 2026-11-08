@@ -174,6 +174,21 @@ export function slugForCountryCode(countryCode: string): string | undefined {
   return ISO_TO_SLUG[countryCode];
 }
 
+// Flat price for a length the table does not list. eSimerge sells every
+// length from 1 to 30 days, the tables list six; in between, the price runs
+// on a straight line between the two neighbours, so 20 days always lands
+// between 15 and 30. Outside the table (1–2 days) there is no line to follow
+// and the caller falls back to the formula.
+function interpolatedFlat(table: Record<number, number>, days: number): number | null {
+  if (table[days] != null) return table[days];
+  const known = Object.keys(table).map(Number).sort((a, b) => a - b);
+  const lo = [...known].reverse().find((d) => d < days);
+  const hi = known.find((d) => d > days);
+  if (lo == null || hi == null) return null;
+  const price = table[lo] + ((table[hi] - table[lo]) * (days - lo)) / (hi - lo);
+  return roundToNearest500(price);
+}
+
 export function overriddenPrice(
   slug: string | undefined,
   days: number,
@@ -181,7 +196,8 @@ export function overriddenPrice(
   netUsd?: number,
 ): number | null {
   if (!slug || !isUnlimited) return null;
-  const override = PRICE_OVERRIDES[slug]?.[days];
+  const table = PRICE_OVERRIDES[slug];
+  const override = table ? interpolatedFlat(table, days) : null;
   if (override == null) return null;
   if (netUsd !== undefined && override < netUsd * USD_TO_MNT * OVERRIDE_MIN_MARGIN) {
     console.warn(`[Pricing] Override ${override} MNT for ${slug} ${days}D is below the cost floor (net $${netUsd}) — using formula price`);
