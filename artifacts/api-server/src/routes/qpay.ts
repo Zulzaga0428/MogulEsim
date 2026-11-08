@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { createInvoice, checkPayment } from "../lib/qpay";
 import { findAiraloPackage, getSimTopups } from "../lib/airalo";
 import { findEsimergePlan, isEsimergePackage } from "../lib/esimerge";
+import { ESA_TOPUP_PREFIX, esaPriceInMnt, findEsaPackage, getEsaTopups, gbLabel, isEsaPackage, parseEsaId } from "../lib/esimaccess";
 import { runFulfillment, type FulfillableOrder } from "../lib/fulfillment.js";
 import { esimergePriceInMnt, findLocalPackage, overriddenPrice, priceFromUsd, slugForCountryCode } from "./countries";
 import { verifyUserToken } from "../lib/user-auth.js";
@@ -22,6 +23,20 @@ function getCallbackBase(): string {
 // Resolve the authoritative price for a package on the server. The client's
 // priceInMnt is display-only and must never decide what the customer pays.
 async function resolvePriceInMnt(packageId: string): Promise<number | null> {
+  // eSIM Access: priced from its live catalog only (fixed, or daily × days).
+  if (packageId.startsWith("esa")) {
+    const esa = parseEsaId(packageId);
+    if (!esa) return null;
+    try {
+      const pkg = await findEsaPackage(esa.code);
+      if (!pkg) return null;
+      if ((pkg.dataType === 2) !== (esa.days !== null)) return null;
+      return esaPriceInMnt(pkg, esa.days);
+    } catch (err) {
+      console.error(`[QPay] eSIM Access price lookup failed for ${packageId}:`, err);
+      return null;
+    }
+  }
   // eSimerge packages are priced from eSimerge's live catalog only. Falling
   // through to Airalo or the local table could never match an "esm:" id, and
   // a plan no longer in the catalog must not be sold.
@@ -195,6 +210,22 @@ router.get("/qpay/topups/:orderId", async (req: Request, res: Response) => {
       res.json({ topups: [] });
       return;
     }
+    if (isEsaPackage(order.packageId)) {
+      const list = await getEsaTopups(order.esimIccid);
+      res.json({
+        topups: list
+          .map((t) => ({
+            packageId: ESA_TOPUP_PREFIX + t.packageCode,
+            title: t.name,
+            data: gbLabel(t.volume),
+            validity: t.duration,
+            isUnlimited: false,
+            priceInMnt: esaPriceInMnt(t, null),
+          }))
+          .sort((a, b) => a.validity - b.validity || a.priceInMnt - b.priceInMnt),
+      });
+      return;
+    }
 
     const topups = await getSimTopups(order.esimIccid);
     const priced = topups
@@ -247,13 +278,28 @@ router.post("/qpay/topup", async (req: Request, res: Response) => {
       return;
     }
 
-    const topups = await getSimTopups(parent.esimIccid);
-    const topup = topups.find((t) => t.package_id === packageId);
-    if (!topup) {
-      res.status(400).json({ error: "bad_request", message: `Topup not available for this eSIM: ${packageId}` });
-      return;
+    let priceInMnt: number;
+    let topupTitle: string;
+    if (isEsaPackage(parent.packageId)) {
+      // Only top-ups eSIM Access offers for this very ICCID can be bought.
+      const offered = await getEsaTopups(parent.esimIccid);
+      const t = offered.find((x) => ESA_TOPUP_PREFIX + x.packageCode === packageId);
+      if (!t) {
+        res.status(400).json({ error: "bad_request", message: `Topup not available for this eSIM: ${packageId}` });
+        return;
+      }
+      priceInMnt = esaPriceInMnt(t, null);
+      topupTitle = t.name;
+    } else {
+      const topups = await getSimTopups(parent.esimIccid);
+      const topup = topups.find((t) => t.package_id === packageId);
+      if (!topup) {
+        res.status(400).json({ error: "bad_request", message: `Topup not available for this eSIM: ${packageId}` });
+        return;
+      }
+      priceInMnt = overriddenPrice(parent.countrySlug, topup.day, topup.is_unlimited, topup.net_price) ?? priceFromUsd(topup.net_price);
+      topupTitle = topup.title;
     }
-    const priceInMnt = overriddenPrice(parent.countrySlug, topup.day, topup.is_unlimited, topup.net_price) ?? priceFromUsd(topup.net_price);
     if (!priceInMnt || priceInMnt <= 0) {
       res.status(400).json({ error: "bad_request", message: "Could not price this topup" });
       return;
@@ -273,7 +319,7 @@ router.post("/qpay/topup", async (req: Request, res: Response) => {
 
     const callbackUrl = `${getCallbackBase()}/api/qpay/callback?orderId=${order.id}`;
     const senderInvoiceNo = `${BRAND.invoicePrefix}-${order.id}-${Date.now()}`.slice(0, 24);
-    const invoice = await createInvoice(priceInMnt, senderInvoiceNo, `${BRAND.name} Topup - ${topup.title}`, callbackUrl);
+    const invoice = await createInvoice(priceInMnt, senderInvoiceNo, `${BRAND.name} Topup - ${topupTitle}`, callbackUrl);
     const deepLinks = invoice.qPay_deeplink || invoice.urls || [];
 
     await db.update(ordersTable)

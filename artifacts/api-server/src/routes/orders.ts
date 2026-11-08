@@ -3,11 +3,18 @@ import { db, ordersTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { getSimUsage } from "../lib/airalo";
 import { isEsimergePackage } from "../lib/esimerge";
+import { getEsaEsimByIccid, isEsaPackage } from "../lib/esimaccess";
 import { runFulfillment } from "../lib/fulfillment.js";
 import { requireAdmin } from "../lib/admin.js";
 import { verifyUserToken } from "../lib/user-auth.js";
 
 const router: IRouter = Router();
+
+// While an eSIM Access order is being allocated, esimQrCode holds an internal
+// "esa-order:" marker; it is not a QR and must not reach a page's <img src>.
+function publicQr(qr: string | null): string | null {
+  return qr && !qr.startsWith("esa-order:") ? qr : null;
+}
 
 router.get("/admin/orders", async (req: Request, res: Response) => {
   if (!requireAdmin(req, res)) return;
@@ -23,7 +30,7 @@ router.get("/admin/orders", async (req: Request, res: Response) => {
       totalPrice: Number(o.totalPrice),
       currency: o.currency,
       esimIccid: o.esimIccid,
-      esimQrCode: o.esimQrCode,
+      esimQrCode: publicQr(o.esimQrCode),
       qpayInvoiceId: o.qpayInvoiceId,
       createdAt: o.createdAt.toISOString(),
     })));
@@ -52,7 +59,7 @@ router.get("/orders", async (req: Request, res: Response) => {
       totalPrice: Number(o.totalPrice),
       currency: o.currency,
       esimIccid: o.esimIccid,
-      esimQrCode: o.esimQrCode,
+      esimQrCode: publicQr(o.esimQrCode),
       createdAt: o.createdAt.toISOString(),
     })));
   } catch (err) {
@@ -170,6 +177,27 @@ router.get("/orders/:id/usage", async (req: Request, res: Response) => {
       return;
     }
 
+    if (isEsaPackage(order.packageId)) {
+      const sim = await getEsaEsimByIccid(order.esimIccid);
+      if (!sim) {
+        res.status(404).json({ error: "not_found", message: "eSIM not found" });
+        return;
+      }
+      const total = Math.round((sim.totalVolume ?? 0) / 1024 / 1024);
+      const used = Math.round((sim.orderUsage ?? 0) / 1024 / 1024);
+      // Same shape as Airalo's usage, in MB, so the profile page needs no change.
+      res.json({
+        status: sim.esimStatus ?? "UNKNOWN",
+        remaining: Math.max(0, total - used),
+        total,
+        expired_at: sim.expiredTime ?? null,
+        is_unlimited: false,
+        remaining_voice: 0,
+        remaining_text: 0,
+      });
+      return;
+    }
+
     const usage = await getSimUsage(order.esimIccid);
     res.json(usage);
   } catch (err) {
@@ -216,7 +244,7 @@ router.get("/orders/:id", async (req: Request, res: Response) => {
       qpayQrImage: order.qpayQrImage,
       qpayDeepLinks: order.qpayDeepLinks ? JSON.parse(order.qpayDeepLinks) : [],
       esimIccid: order.esimIccid,
-      esimQrCode: order.esimQrCode,
+      esimQrCode: publicQr(order.esimQrCode),
       createdAt: order.createdAt.toISOString(),
     });
   } catch (err) {

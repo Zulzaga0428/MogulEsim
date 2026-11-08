@@ -5,7 +5,7 @@ import { useAuth, currentUser } from '@/hooks/use-auth';
 import { AuthModal } from '@/components/auth-modal';
 import { useListCountryPackages } from '@workspace/api-client-react';
 import { formatCurrency } from '@/lib/utils';
-import { ArrowLeft, Infinity, Wifi, Clock, Database, Check, QrCode, Smartphone } from 'lucide-react';
+import { ArrowLeft, Infinity, Wifi, Clock, Database, Check, QrCode, Smartphone, CalendarDays } from 'lucide-react';
 
 const COMING_SOON_SLUGS = new Set(['russia']);
 
@@ -84,13 +84,32 @@ export default function CountryPackages() {
   const country = data?.country;
   const packages = data?.packages || [];
   const selectedPkg = packages.find(p => p.id === selected);
-  const unlimitedPkgs = packages.filter(p => p.isUnlimited);
-  const fixedPkgs = packages.filter(p => !p.isUnlimited);
-  const [tab, setTab] = useState<'unlimited' | 'fixed'>('unlimited');
-  // Unlimited first — it is what the shop is named for; fall back to fixed
-  // when a country has none.
-  const activeTab = unlimitedPkgs.length === 0 ? 'fixed' : fixedPkgs.length === 0 ? 'unlimited' : tab;
-  const visiblePkgs = activeTab === 'unlimited' ? unlimitedPkgs : fixedPkgs;
+  type Kind = 'unlimited' | 'fixed' | 'daily';
+  const kindOf = (p: (typeof packages)[number]): Kind =>
+    ((p as { kind?: Kind }).kind) ?? (p.isUnlimited ? 'unlimited' : 'fixed');
+  const byKind: Record<Kind, typeof packages> = {
+    unlimited: packages.filter(p => kindOf(p) === 'unlimited'),
+    fixed: packages.filter(p => kindOf(p) === 'fixed'),
+    daily: packages.filter(p => kindOf(p) === 'daily'),
+  };
+  const kinds = (['unlimited', 'fixed', 'daily'] as Kind[]).filter(k => byKind[k].length > 0);
+  // ?tab=daily / ?tab=fixed opens that tab, so an ad can link straight to it.
+  const [tab, setTab] = useState<Kind>(() => {
+    const t = new URLSearchParams(window.location.search).get('tab');
+    return t === 'fixed' || t === 'daily' ? t : 'unlimited';
+  });
+  // Unlimited first — it is what the shop is named for; otherwise the first
+  // kind the country has.
+  const activeTab: Kind = kinds.includes(tab) ? tab : (kinds[0] ?? 'unlimited');
+  const visiblePkgs = byKind[activeTab];
+  // Daily plans: one card per daily allowance, lengths as chips inside it.
+  const dailyGroups = [...byKind.daily.reduce((m, p) => {
+    const list = m.get(p.dataAmount ?? 0) ?? [];
+    list.push(p);
+    return m.set(p.dataAmount ?? 0, list);
+  }, new Map<number, typeof packages>()).values()]
+    .map(list => list.sort((a, b) => a.validity - b.validity))
+    .sort((a, b) => (a[0].dataAmount ?? 0) - (b[0].dataAmount ?? 0));
 
   function goToCheckout() {
     if (!selectedPkg || !country) return;
@@ -100,7 +119,7 @@ export default function CountryPackages() {
       name: selectedPkg.name,
       validity: selectedPkg.validity,
       // "Unlimited" or "1 GB": most destinations sell capped plans.
-      dataLabel: selectedPkg.isUnlimited ? 'Unlimited' : selectedPkg.data,
+      dataLabel: selectedPkg.isUnlimited ? 'Unlimited' : kindOf(selectedPkg) === 'daily' ? `${selectedPkg.data}/day` : selectedPkg.data,
       priceInMnt: selectedPkg.priceInMnt,
       countrySlug: slug,
       countryName: lang === 'mn' ? country.nameMn : country.name,
@@ -223,16 +242,17 @@ export default function CountryPackages() {
         ) : packages.length > 0 ? (
           <>
             {/* Unlimited / fixed tabs, only when the country sells both. */}
-            {unlimitedPkgs.length > 0 && fixedPkgs.length > 0 && (
-              <div className="mb-3 inline-flex rounded-2xl bg-secondary p-1">
+            {kinds.length > 1 && (
+              <div className="mb-3 flex w-full rounded-2xl bg-secondary p-1">
                 {([
-                  ['unlimited', <Infinity key="i" className="h-4 w-4 stroke-[2.5]" />, lang === 'mn' ? 'Хязгааргүй' : 'Unlimited', unlimitedPkgs.length],
-                  ['fixed', <Database key="d" className="h-3.5 w-3.5" />, lang === 'mn' ? 'Тогтмол дата' : 'Fixed data', fixedPkgs.length],
-                ] as const).map(([key, icon, label, count]) => (
+                  ['unlimited', <Infinity key="i" className="h-4 w-4 stroke-[2.5]" />, lang === 'mn' ? 'Хязгааргүй' : 'Unlimited', byKind.unlimited.length],
+                  ['fixed', <Database key="d" className="h-3.5 w-3.5" />, lang === 'mn' ? 'GB багц' : 'GB plans', byKind.fixed.length],
+                  ['daily', <CalendarDays key="c" className="h-3.5 w-3.5" />, lang === 'mn' ? 'Өдрийн' : 'Daily', dailyGroups.length],
+                ] as const).filter(([key]) => kinds.includes(key)).map(([key, icon, label, count]) => (
                   <button
                     key={key}
                     onClick={() => setTab(key)}
-                    className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold transition-all ${
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-[13px] font-bold transition-all ${
                       activeTab === key ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
@@ -243,11 +263,70 @@ export default function CountryPackages() {
               </div>
             )}
 
+            {activeTab === 'daily' && (
+              <p className="mb-2 text-xs text-muted-foreground">
+                {lang === 'mn'
+                  ? 'Өдөр бүр шинэ дата. Өдрийн хэмжээ дуусвал тэр өдөртөө удаан хурдаар үргэлжилнэ.'
+                  : 'Fresh data every day. After the daily allowance, the rest of the day runs at reduced speed.'}
+              </p>
+            )}
+            {activeTab === 'daily' ? (
+              <div className="flex flex-col gap-3">
+                {dailyGroups.map((group) => {
+                  const chosen = group.find(p => p.id === selected);
+                  const shown = chosen ?? group[0];
+                  const after = (shown as { afterLimit?: string }).afterLimit;
+                  return (
+                    <div
+                      key={group[0].id}
+                      className={`rounded-2xl bg-white p-3 ring-1 transition-shadow ${chosen ? 'ring-2 ring-brand' : 'ring-black/[0.07]'}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="flex items-center gap-1.5 text-[15px] font-bold text-foreground">
+                            <CalendarDays className="h-4 w-4 text-brand" />
+                            {shown.data} / {lang === 'mn' ? 'өдөр' : 'day'}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {after
+                              ? (lang === 'mn' ? `Дараа нь ${after} хурдтай` : `Then ${after}`)
+                              : shown.networkType}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-base font-extrabold leading-tight text-foreground">
+                            {chosen ? formatCurrency(chosen.priceInMnt) : `${formatCurrency(group[0].priceInMnt)}${lang === 'mn' ? '-с' : '+'}`}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {formatCurrency(Math.round(shown.priceInMnt / shown.validity / 100) * 100)}/{lang === 'mn' ? 'хоног' : 'day'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-2.5 flex flex-wrap gap-1.5">
+                        {group.map(p => (
+                          <button
+                            key={p.id}
+                            onClick={() => setSelected(p.id)}
+                            className={`min-w-[44px] rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors ${
+                              selected === p.id ? 'bg-brand text-on-brand' : 'bg-[#F4F4F5] text-foreground hover:bg-[#EAEAEC]'
+                            }`}
+                          >
+                            {p.validity}{lang === 'mn' ? ' хоног' : 'd'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-black/[0.07] divide-y divide-black/[0.06]">
               {visiblePkgs.map((pkg) => {
                 const isSelected = selected === pkg.id;
                 const perks = pkg as { rechargeable?: boolean; voice?: number };
-                const perDay = pkg.validity > 1 ? Math.round(pkg.priceInMnt / pkg.validity / 100) * 100 : null;
+                // Per-day cost compares unlimited plans of different lengths;
+                // on a fixed-GB plan it means nothing.
+                const perDay = pkg.isUnlimited && pkg.validity > 1 ? Math.round(pkg.priceInMnt / pkg.validity / 100) * 100 : null;
                 return (
                   <button
                     key={pkg.id}
@@ -301,6 +380,7 @@ export default function CountryPackages() {
                 );
               })}
             </div>
+            )}
           </>
         ) : (
           <div className="text-center py-16 bg-secondary/20 rounded-2xl border border-border/50">
@@ -346,7 +426,7 @@ export default function CountryPackages() {
           <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground">
-                {selectedPkg.validity} {lang === 'mn' ? 'хоног' : 'days'} · {selectedPkg.isUnlimited ? 'Unlimited' : selectedPkg.data}
+                {selectedPkg.validity} {lang === 'mn' ? 'хоног' : 'days'} · {selectedPkg.isUnlimited ? 'Unlimited' : kindOf(selectedPkg) === 'daily' ? `${selectedPkg.data}/${lang === 'mn' ? 'өдөр' : 'day'}` : selectedPkg.data}
               </p>
               <p className="font-extrabold text-foreground text-lg leading-tight">
                 {formatCurrency(selectedPkg.priceInMnt)}

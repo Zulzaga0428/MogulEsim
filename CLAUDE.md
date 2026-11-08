@@ -26,7 +26,7 @@ pnpm workspace monorepo, TypeScript throughout.
 | `lib/api-client-react` | Generated React Query hooks |
 | `scripts` | Utility scripts, run via `pnpm --filter @workspace/scripts run <name>` |
 
-External services: **eSimerge** (eSIM supply, see below), **Airalo** (fallback until eSimerge is live), **QPay v2** (payment),
+External services: **eSimerge** (unlimited), **eSIM Access** (fixed GB + daily), **Airalo** (fallback only), **QPay v2** (payment),
 **Cloudflare Images** (hero slides), **OpenAI** (support chat). Accounts are our own.
 
 ## Commands
@@ -148,8 +148,12 @@ otherwise be invisible, and the retry would buy a second SIM.
 
 ## eSimerge (the supplier)
 
-`lib/esimerge.ts`. Since 2026-11-08 this shop sells eSimerge for every
-country — unlimited (every length 1–30 days) and fixed GB. The whole catalog
+Since 2026-11-08 each country page is built from two suppliers
+(`supplierPackages()` in `routes/countries.ts`): **unlimited** from eSimerge
+and **fixed GB + daily-limit** plans from eSIM Access (next section). Each
+package carries `kind` (`unlimited` / `fixed` / `daily`), which picks its tab.
+
+`lib/esimerge.ts` — unlimited only, every length 1–30 days. The whole catalog
 is fetched once, grouped by ISO code and cached 2h; `/countries/:slug/packages`
 serves it and falls back to Airalo only when eSimerge has nothing for the
 country (no live key, outage with no cache, country not covered). Our package
@@ -173,6 +177,30 @@ ids for its plans start with `esm:` — that prefix is how pricing
 - Every unlimited length 1–30 days is sold. Lengths missing from a flat
   table get a price on the straight line between their two neighbours
   (`interpolatedFlat`); outside the table (1–2 days) the formula applies.
+
+## eSIM Access (fixed GB and daily plans)
+
+`lib/esimaccess.ts`. HMAC-signed POSTs, keys `ESIMACCESS_ACCESS_CODE` /
+`ESIMACCESS_SECRET_KEY`. **No sandbox**: every order is real and paid from
+the prepaid balance (`balance/query`).
+
+- Ids: `esa:<code>` fixed, `esa:<code>:<days>` daily bought for `<days>`
+  (`periodNum`, lengths in `DAILY_DAYS`), `esa-topup:<code>` top-up.
+- Catalog per country, cached 2h: plans covering the country and at most two
+  neighbours; ≥1 GB; no "Unlimited" names (unlimited is eSimerge's). One plan
+  per slot (length+data for fixed, data for daily): non-`nonhkip` first —
+  nonhkip exits on a mainland IP, so Google/WhatsApp fail in China — then the
+  country's own plan, then fewest locations, then cheapest.
+- Price: fixed 2.0× cost (min 5,000), daily 1.6× cost × days. Daily rows
+  that cost as much as unlimited for the same length, or more than a bigger
+  daily allowance, are dropped.
+- Orders are async. `fulfillOrder()` places the order, writes
+  `esa-order:<orderNo>` into `esimQrCode` *before* waiting, then polls
+  `esim/query` (200010 = not ready) up to 60 s. A retry finds the marker and
+  resumes that orderNo instead of ordering again. `routes/orders.ts`
+  (`publicQr`) hides the marker from pages.
+- Top-up by ICCID (`package/list type TOPUP`, `esim/topup`); usage from
+  `esim/query` by ICCID, returned in Airalo's shape (MB).
 
 ## Auth
 

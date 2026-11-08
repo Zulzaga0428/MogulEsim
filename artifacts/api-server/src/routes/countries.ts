@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { getPackagesByCountry, type AiraloPackage, getPackagesIndex } from "../lib/airalo";
 import { ESM_PREFIX, getCountryPlans, type EsimergePlan } from "../lib/esimerge";
+import { DAILY_DAYS, ESA_PREFIX, esaPriceInMnt, gbLabel, getCountryEsaPackages, type EsaPackage } from "../lib/esimaccess";
 import { WORLD_COUNTRIES, flagEmoji, slugFromName } from "../lib/world-countries";
 
 const router: IRouter = Router();
@@ -258,27 +259,82 @@ function convertEsimergePlan(p: EsimergePlan, countrySlug: string): Package {
     // Top-ups for these SIMs are not wired up yet (they need eSimerge's own
     // eSIM id, which the orders table does not store).
     rechargeable: false,
+    kind: "unlimited",
+  };
+}
+
+function convertEsaFixed(p: EsaPackage, countrySlug: string): Package {
+  return {
+    id: `${countrySlug}-esa-${p.packageCode}`,
+    packageId: ESA_PREFIX + p.packageCode,
+    name: p.name,
+    data: gbLabel(p.volume),
+    dataAmount: Math.round(p.volume / 1024 / 1024),
+    validity: p.duration,
+    price: p.price / 10000,
+    currency: "USD",
+    priceInMnt: esaPriceInMnt(p, null),
+    speed: p.speed || "4G/5G",
+    isUnlimited: false,
+    networkType: "LTE/5G",
+    rechargeable: p.supportTopUpType !== 1,
+    kind: "fixed",
+  };
+}
+
+function convertEsaDaily(p: EsaPackage, days: number, countrySlug: string): Package {
+  return {
+    id: `${countrySlug}-esa-${p.packageCode}-${days}d`,
+    packageId: `${ESA_PREFIX}${p.packageCode}:${days}`,
+    name: p.name,
+    data: gbLabel(p.volume),
+    dataAmount: Math.round(p.volume / 1024 / 1024),
+    validity: days,
+    price: (p.price / 10000) * days,
+    currency: "USD",
+    priceInMnt: esaPriceInMnt(p, days),
+    speed: p.speed || "4G/5G",
+    isUnlimited: false,
+    networkType: "LTE/5G",
+    rechargeable: p.supportTopUpType !== 1,
+    kind: "daily",
+    // What happens after the day's allowance, shown on the page so a daily
+    // plan is never mistaken for unlimited.
+    afterLimit: p.fupPolicy || undefined,
   };
 }
 
 /**
- * eSimerge's packages for a country, or null when it has none to offer (no
- * live key, outage with nothing cached, country not covered). eSimerge is
- * this shop's supplier; the caller falls back to Airalo only on null so a
- * country never goes empty.
+ * This shop's own suppliers for a country: unlimited from eSimerge (live key
+ * only), fixed-GB and daily plans from eSIM Access. Null when neither has
+ * anything, and the caller falls back to Airalo so a country never goes empty.
  */
-async function esimergePackages(iso: string | undefined, slug: string): Promise<Package[] | null> {
+async function supplierPackages(iso: string | undefined, slug: string): Promise<Package[] | null> {
   if (!iso) return null;
-  try {
-    const plans = await getCountryPlans(iso);
-    if (plans.length === 0) return null;
-    return plans
-      .map((p) => convertEsimergePlan(p, slug))
-      .sort((a, b) => a.validity - b.validity || a.dataAmount - b.dataAmount);
-  } catch (err) {
-    console.error(`[eSimerge] Catalog unavailable for ${slug}, falling back to Airalo:`, err);
-    return null;
-  }
+  const [esm, esa] = await Promise.all([
+    getCountryPlans(iso).catch((err) => {
+      console.error(`[eSimerge] Catalog unavailable for ${slug}:`, err);
+      return [] as EsimergePlan[];
+    }),
+    getCountryEsaPackages(iso).catch((err) => {
+      console.error(`[eSIM Access] Catalog unavailable for ${slug}:`, err);
+      return { fixed: [] as EsaPackage[], daily: [] as EsaPackage[] };
+    }),
+  ]);
+  const unlimited = esm.filter((p) => p.type === "unlimited").map((p) => convertEsimergePlan(p, slug));
+  const fixed = esa.fixed.map((p) => convertEsaFixed(p, slug));
+  // A daily plan that costs as much as unlimited for the same length is a
+  // trap for the customer; leave it out.
+  const unlimitedPrice = new Map(unlimited.map((u) => [u.validity, u.priceInMnt]));
+  // Nor offer a daily allowance that costs more than a bigger one.
+  const dailyPlans = esa.daily.filter((p) =>
+    !esa.daily.some((q) => q.volume > p.volume && q.price <= p.price));
+  const daily = dailyPlans
+    .flatMap((p) => DAILY_DAYS.map((d) => convertEsaDaily(p, d, slug)))
+    .filter((d) => !(unlimitedPrice.has(d.validity) && d.priceInMnt >= unlimitedPrice.get(d.validity)!));
+  const all = [...unlimited, ...fixed, ...daily];
+  if (all.length === 0) return null;
+  return all.sort((a, b) => a.validity - b.validity || a.dataAmount - b.dataAmount);
 }
 
 type Package = {
@@ -286,6 +342,10 @@ type Package = {
   dataAmount: number; validity: number; price: number; currency: string;
   priceInMnt: number; speed: string; isUnlimited: boolean; networkType: string;
   rechargeable?: boolean; voice?: number; sms?: number;
+  /** Which tab it belongs on; absent on Airalo packages (derived from isUnlimited). */
+  kind?: "unlimited" | "fixed" | "daily";
+  /** Daily plans: speed after the day's allowance, e.g. "512 Kbps". */
+  afterLimit?: string;
 };
 
 // Fallback catalog, used only when the Airalo API is unreachable or returns
@@ -831,9 +891,9 @@ router.get("/countries/:slug/packages", async (req, res) => {
   }
   const { country, iso: isoCode } = found;
 
-  const esm = await esimergePackages(isoCode ?? undefined, slug);
-  if (esm) {
-    res.json({ country: { ...country, packageCount: esm.length }, packages: esm });
+  const own = await supplierPackages(isoCode ?? undefined, slug);
+  if (own) {
+    res.json({ country: { ...country, packageCount: own.length }, packages: own });
     return;
   }
 

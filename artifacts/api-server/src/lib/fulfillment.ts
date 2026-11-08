@@ -3,6 +3,11 @@ import { db, ordersTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { createEsimOrder, createTopupOrder } from "./airalo.js";
 import { isEsimergePackage, issueEsim, qrDataUrl } from "./esimerge.js";
+import { ESA_TOPUP_PREFIX, esaTopup, findEsaPackage, parseEsaId, placeEsaOrder, waitForEsaEsim } from "./esimaccess.js";
+
+// Kept in esimQrCode while an eSIM Access order is placed but its eSIM is not
+// allocated yet, so a retry resumes that order instead of buying a second one.
+const ESA_PENDING = "esa-order:";
 
 /**
  * Held by whichever worker is currently buying from Airalo for an order.
@@ -41,6 +46,16 @@ export interface FulfillResult {
  * retry, the admin route reports the error to whoever pressed the button.
  */
 export async function fulfillOrder(order: FulfillableOrder): Promise<FulfillResult> {
+  if (order.esimIccid && order.packageId.startsWith(ESA_TOPUP_PREFIX)) {
+    const code = order.packageId.slice(ESA_TOPUP_PREFIX.length);
+    console.log(`[eSIM Access] Topping up ICCID ${order.esimIccid} for order #${order.id}, package: ${code}`);
+    await esaTopup(order.esimIccid, code, `${BRAND.invoicePrefix}-order-${order.id}`);
+    await db.update(ordersTable)
+      .set({ status: "completed", updatedAt: new Date() })
+      .where(eq(ordersTable.id, order.id));
+    return { iccid: order.esimIccid, qrCodeUrl: null, topup: true };
+  }
+
   if (order.esimIccid) {
     console.log(`[Airalo] Topping up ICCID ${order.esimIccid} for order #${order.id}, package: ${order.packageId}`);
     await createTopupOrder(order.packageId, order.esimIccid, `${BRAND.name} topup #${order.id}`);
@@ -53,6 +68,33 @@ export async function fulfillOrder(order: FulfillableOrder): Promise<FulfillResu
     // A top-up reuses the SIM the customer already installed, so there is no
     // new QR code to hand back.
     return { iccid: order.esimIccid, qrCodeUrl: null, topup: true };
+  }
+
+  const esa = parseEsaId(order.packageId);
+  if (esa) {
+    const [row] = await db.select({ esimQrCode: ordersTable.esimQrCode }).from(ordersTable).where(eq(ordersTable.id, order.id)).limit(1);
+    let orderNo = row?.esimQrCode?.startsWith(ESA_PENDING) ? row.esimQrCode.slice(ESA_PENDING.length) : null;
+    if (!orderNo) {
+      const pkg = await findEsaPackage(esa.code);
+      if (!pkg) throw new Error(`eSIM Access package ${esa.code} not found`);
+      console.log(`[eSIM Access] Ordering ${esa.code}${esa.days ? ` × ${esa.days} days` : ""} for order #${order.id}`);
+      orderNo = await placeEsaOrder(pkg, esa.days, `${BRAND.invoicePrefix}-order-${order.id}`);
+      // Record the order before waiting: a crash or timeout from here on must
+      // resume this orderNo, never place a new one.
+      await db.update(ordersTable)
+        .set({ esimQrCode: ESA_PENDING + orderNo, updatedAt: new Date() })
+        .where(eq(ordersTable.id, order.id));
+    } else {
+      console.log(`[eSIM Access] Resuming order ${orderNo} for order #${order.id}`);
+    }
+
+    const sim = await waitForEsaEsim(orderNo);
+    const qrCodeUrl = sim.qrCodeUrl || (await qrDataUrl(sim.ac));
+    await db.update(ordersTable)
+      .set({ status: "completed", esimIccid: sim.iccid, esimQrCode: qrCodeUrl, updatedAt: new Date() })
+      .where(eq(ordersTable.id, order.id));
+    console.log(`[eSIM Access] eSIM fulfilled for order #${order.id} — ICCID: ${sim.iccid}`);
+    return { iccid: sim.iccid, qrCodeUrl, topup: false };
   }
 
   if (isEsimergePackage(order.packageId)) {
