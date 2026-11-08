@@ -35,6 +35,13 @@ async function resolvePriceInMnt(packageId: string): Promise<number | null> {
       return null;
     }
   }
+  // Without Airalo credentials nothing can issue a non-eSimerge package, so
+  // it must not be sold: the money would arrive and the order would stall.
+  // The storefront may still list the hardcoded fallback catalog meanwhile.
+  if (!process.env.AIRALO_CLIENT_ID || !process.env.AIRALO_CLIENT_SECRET) {
+    console.warn(`[QPay] Refusing ${packageId}: not an eSimerge package and Airalo is not configured`);
+    return null;
+  }
   try {
     const found = await findAiraloPackage(packageId);
     if (found) {
