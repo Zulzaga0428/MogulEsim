@@ -1,7 +1,7 @@
 import { Link } from 'wouter';
 import { useLanguage } from '@/hooks/use-language';
 import {
-  ArrowRight, Play, Wifi, Zap, ShieldCheck, Smartphone, Headphones,
+  ArrowRight, Wifi, Zap, ShieldCheck, Smartphone, Headphones,
   ShoppingCart, QrCode, SmartphoneNfc, ChevronRight, Infinity as InfinityIcon, Database, CalendarDays,
 } from 'lucide-react';
 
@@ -75,31 +75,14 @@ export default function Home() {
           <div className="relative z-10">
             <Eyebrow>{mn ? 'Аяллын хязгааргүй дата' : 'Unlimited travel data'}</Eyebrow>
             <h1 className="mt-4 font-display text-[36px] font-extrabold leading-[1.05] tracking-tight text-[#0F2A3A] sm:text-5xl md:text-[40px] lg:text-[50px] xl:text-[58px]">
-              <span className="block whitespace-nowrap">{mn ? 'Дэлхийн хаана ч' : 'Stay connected'}</span>
-              <span className="block whitespace-nowrap text-brand">{mn ? 'Холбогдсон бай.' : 'anywhere.'}</span>
+              <span className="block whitespace-nowrap">{mn ? 'Дэлхийн хаана ч' : 'Anywhere, stay'}</span>
+              <span className="block whitespace-nowrap text-brand">{mn ? 'дататай бай.' : 'with data.'}</span>
             </h1>
-            <p className="mt-4 max-w-md text-base leading-relaxed text-[#33505E] md:text-lg">
+            <p className="mt-4 hidden max-w-md text-base leading-relaxed text-[#33505E] md:block md:text-lg">
               {mn
                 ? 'Аяллын eSIM – SIM карт солихгүй, шууд онлайнаар идэвхжүүлээд датагаар аялаарай.'
                 : 'Travel eSIM – no SIM swap. Activate online and travel with data.'}
             </p>
-            <div className="mt-7 flex flex-wrap items-center gap-3">
-              <Link
-                href="/countries"
-                className="inline-flex h-14 items-center gap-2 rounded-full bg-[var(--accent)] px-8 text-lg font-bold text-white shadow-[0_12px_28px_color-mix(in_srgb,var(--accent)_35%,transparent)] transition-transform hover:-translate-y-0.5 hover:bg-[var(--accent-hover)]"
-              >
-                {mn ? 'eSIM авах' : 'Get eSIM'} <ArrowRight className="h-5 w-5" />
-              </Link>
-              <Link
-                href="/how-it-works"
-                className="inline-flex h-14 items-center gap-3 rounded-full border-2 border-brand bg-white/70 pl-2 pr-6 text-sm font-bold text-[#0F2A3A] backdrop-blur hover:bg-white"
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-brand text-brand">
-                  <Play className="ml-0.5 h-4 w-4 fill-current" />
-                </span>
-                {mn ? 'Хэрхэн ажилладаг вэ?' : 'How does it work?'}
-              </Link>
-            </div>
           </div>
 
           <div className="relative -mx-4 md:mx-0 md:-mr-10">
@@ -117,7 +100,7 @@ export default function Home() {
 
         {/* Feature bar */}
         <div className="container mx-auto max-w-7xl px-4">
-          <div className="relative z-10 mt-4 grid grid-cols-2 gap-x-3 gap-y-4 rounded-3xl bg-white/95 p-4 shadow-[0_18px_40px_rgba(15,42,58,0.10)] ring-1 ring-black/[0.04] sm:grid-cols-3 md:mt-0 md:grid-cols-5 md:gap-0 md:p-5">
+          <div className="relative z-10 mt-4 hidden grid-cols-2 gap-x-3 gap-y-4 rounded-3xl bg-white/95 p-4 shadow-[0_18px_40px_rgba(15,42,58,0.10)] ring-1 ring-black/[0.04] sm:grid-cols-3 md:mt-0 md:grid md:grid-cols-5 md:gap-0 md:p-5">
             {features.map(({ icon: Icon, t, d }, i) => (
               <div
                 key={t}
@@ -142,10 +125,10 @@ export default function Home() {
               <span className="h-[3px] w-7 rounded-full bg-[var(--accent)]" />
               {mn ? 'Онцлох чиглэлүүд' : 'Top destinations'}
             </p>
-            <h2 className="mt-3 font-display text-3xl font-extrabold leading-tight text-[#0F2A3A] md:text-[34px]">
-              {mn ? <>Аяллын<br />eSIM багцууд</> : <>Travel<br />eSIM plans</>}
+            <h2 className="mt-3 whitespace-nowrap font-display text-2xl font-extrabold leading-tight text-[#0F2A3A] md:whitespace-normal md:text-[34px]">
+              {mn ? <>Аяллын <br className="hidden md:inline" />eSIM багцууд</> : <>Travel <br className="hidden md:inline" />eSIM plans</>}
             </h2>
-            <p className="mt-3 text-[15px] leading-relaxed text-[#33505E]">
+            <p className="mt-3 hidden text-[15px] leading-relaxed text-[#33505E] md:block">
               {mn ? 'Хамгийн эрэлттэй 8 улс руу хязгааргүй датагаар аялаарай.' : 'Travel the 8 most popular countries with unlimited data.'}
             </p>
             <Link
@@ -189,33 +172,33 @@ export default function Home() {
       </section>
 
       {/* ── Three kinds of plans ─────────────────────────── */}
-      <section className="container mx-auto max-w-7xl px-4 pb-12 md:pb-14">
+      <section className="container mx-auto max-w-7xl px-4 pb-8 md:pb-14">
         <div className="text-center">
-          <h2 className="font-display text-2xl font-extrabold text-[#0F2A3A] md:text-3xl">
+          <h2 className="font-display text-xl font-extrabold text-[#0F2A3A] md:text-3xl">
             {mn ? 'Таны аялалд тохирох багц' : 'A plan for every trip'}
           </h2>
-          <p className="mt-2 text-[15px] text-[#33505E]">
+          <p className="mt-2 hidden text-[15px] text-[#33505E] md:block">
             {mn ? 'Нэг сайтад гурван төрөл — өөрт хэрэгтэйгээ л сонго.' : 'Three kinds in one place — take only what you need.'}
           </p>
         </div>
-        <div className="mt-6 grid gap-3 md:grid-cols-3 md:gap-4">
+        <div className="mt-4 grid grid-cols-3 gap-2 md:mt-6 md:gap-4">
           {kinds.map(({ tab, icon: Icon, t, d, tag }, i) => (
             <Link
               key={tab}
               href={`/countries/china?tab=${tab}`}
-              className={`group relative flex flex-col rounded-3xl p-5 transition-all hover:-translate-y-1 ${
+              className={`group relative flex flex-col items-center rounded-2xl p-3 text-center transition-all hover:-translate-y-1 md:items-start md:rounded-3xl md:p-5 md:text-left ${
                 i === 0
                   ? 'bg-brand text-on-brand shadow-[0_16px_36px_color-mix(in_srgb,var(--brand)_30%,transparent)]'
                   : 'bg-white ring-1 ring-black/[0.06] shadow-[0_6px_18px_rgba(15,42,58,0.06)]'
               }`}
             >
-              <span className={`w-fit rounded-full px-2.5 py-1 text-[11px] font-bold ${i === 0 ? 'bg-white/20 text-on-brand' : 'bg-brand-soft text-brand-ink'}`}>
+              <span className={`hidden w-fit rounded-full px-2.5 py-1 text-[11px] font-bold md:inline-block ${i === 0 ? 'bg-white/20 text-on-brand' : 'bg-brand-soft text-brand-ink'}`}>
                 {tag}
               </span>
-              <Icon className={`mt-4 h-9 w-9 ${i === 0 ? 'text-on-brand' : 'text-brand'}`} strokeWidth={2.4} />
-              <p className={`mt-3 font-display text-xl font-extrabold ${i === 0 ? '' : 'text-[#0F2A3A]'}`}>{t}</p>
-              <p className={`mt-1.5 text-sm leading-relaxed ${i === 0 ? 'text-on-brand/85' : 'text-[#33505E]'}`}>{d}</p>
-              <span className={`mt-4 inline-flex items-center gap-1 text-sm font-bold ${i === 0 ? 'text-on-brand' : 'text-[var(--accent)]'}`}>
+              <Icon className={`h-7 w-7 md:mt-4 md:h-9 md:w-9 ${i === 0 ? 'text-on-brand' : 'text-brand'}`} strokeWidth={2.4} />
+              <p className={`mt-2 font-display text-[13px] font-extrabold leading-tight md:mt-3 md:text-xl ${i === 0 ? '' : 'text-[#0F2A3A]'}`}>{t}</p>
+              <p className={`mt-1.5 hidden text-sm leading-relaxed md:block ${i === 0 ? 'text-on-brand/85' : 'text-[#33505E]'}`}>{d}</p>
+              <span className={`mt-4 hidden items-center gap-1 text-sm font-bold md:inline-flex ${i === 0 ? 'text-on-brand' : 'text-[var(--accent)]'}`}>
                 {mn ? 'Багцууд үзэх' : 'See plans'} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </span>
             </Link>
@@ -224,29 +207,29 @@ export default function Home() {
       </section>
 
       {/* ── Three steps ──────────────────────────────────── */}
-      <section className="container mx-auto max-w-7xl px-4 pb-14">
-        <div className="grid items-center gap-6 rounded-3xl bg-brand-soft p-6 md:grid-cols-[230px_1fr] md:gap-8 md:p-8">
+      <section className="container mx-auto max-w-7xl px-4 pb-10 md:pb-14">
+        <div className="grid items-center gap-4 rounded-3xl bg-brand-soft p-4 md:grid-cols-[230px_1fr] md:gap-8 md:p-8">
           <div className="md:border-r md:border-brand-border md:pr-6">
-            <h2 className="font-display text-2xl font-extrabold leading-tight text-[#0F2A3A] md:text-[28px]">
-              {mn ? 'eSIM ашиглах' : 'Use eSIM in'}
-              <span className="block text-[var(--accent)]">{mn ? '3 энгийн алхам' : '3 easy steps'}</span>
+            <h2 className="text-center font-display text-lg font-extrabold leading-tight text-[#0F2A3A] md:text-left md:text-[28px]">
+              {mn ? 'eSIM ашиглах' : 'Use eSIM in'}{' '}
+              <span className="text-[var(--accent)] md:block">{mn ? '3 энгийн алхам' : '3 easy steps'}</span>
             </h2>
-            <span className="mt-2 block h-1 w-20 rounded-full bg-[var(--accent)]" />
+            <span className="mt-2 hidden h-1 w-20 rounded-full bg-[var(--accent)] md:block" />
           </div>
 
-          <div className="grid gap-5 md:grid-cols-[1fr_auto_1fr_auto_1fr] md:items-center md:gap-3">
+          <div className="grid grid-cols-3 gap-2 md:grid-cols-[1fr_auto_1fr_auto_1fr] md:items-center md:gap-3">
             {steps.map(({ icon: Icon, t, d }, i) => (
               <div key={t} className="contents">
-                <div className="flex items-center gap-4">
-                  <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-brand-tint md:h-[72px] md:w-[72px]">
-                    <Icon className="h-8 w-8 text-brand-ink" strokeWidth={2} />
+                <div className="flex flex-col items-center gap-2 text-center md:flex-row md:gap-4 md:text-left">
+                  <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-tint md:h-[72px] md:w-[72px]">
+                    <Icon className="h-7 w-7 text-brand-ink md:h-8 md:w-8" strokeWidth={2} />
                     <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-extrabold text-white ring-2 ring-white">
                       {i + 1}
                     </span>
                   </div>
                   <div>
-                    <p className="font-extrabold text-[#0F2A3A]">{t}</p>
-                    <p className="mt-0.5 text-[13px] leading-snug text-[#33505E]">{d}</p>
+                    <p className="text-[12px] font-extrabold leading-tight text-[#0F2A3A] md:text-base">{t}</p>
+                    <p className="mt-0.5 hidden text-[13px] leading-snug text-[#33505E] md:block">{d}</p>
                   </div>
                 </div>
                 {i < steps.length - 1 && <ChevronRight className="hidden h-6 w-6 text-[var(--accent)] md:block" />}

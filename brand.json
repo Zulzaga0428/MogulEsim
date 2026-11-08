@@ -3,7 +3,7 @@
   "name": "DataTai",
   "tagline": "Хязгааргүй eSIM",
   "siteTitle": "DataTai — аяллын хязгааргүй eSIM",
-  "shareTitle": "DataTai — Дэлхийн хаана ч холбогдсон бай",
+  "shareTitle": "DataTai — Дэлхийн хаана ч дататай бай",
   "description": "Аяллын eSIM: хязгааргүй, GB болон өдрийн багц. SIM карт солихгүй, QPay-ээр төлөөд QR кодоо шууд аваарай.",
   "invoicePrefix": "DT",
   "qpayBranchCode": "DATATAI",
@@ -13,7 +13,7 @@
     "headline": [
       "Дэлхийн хаана ч"
     ],
-    "headlineAccent": "холбогдсон бай.",
+    "headlineAccent": "дататай бай.",
     "lines": [
       "SIM карт солихгүй, шууд онлайнаар",
       "идэвхжүүлээд датагаар аялаарай."
