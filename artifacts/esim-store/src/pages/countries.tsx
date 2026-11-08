@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 // With every Airalo destination listed, one catch-all tab held over a
 // hundred countries, so each part of the world gets its own.
 const REGION_TABS = [
+  // Multi-country plans (Asia, Europe, Global…), served as region "Region".
+  { key: 'regional', labelMn: '🌐 Бүс нутаг',  labelEn: '🌐 Regions',     regions: ['Region'] },
   { key: 'asia',     labelMn: 'Ази',          labelEn: 'Asia',          regions: ['Asia'] },
   { key: 'europe',   labelMn: 'Европ',        labelEn: 'Europe',        regions: ['Europe'] },
   { key: 'americas', labelMn: 'Америк',       labelEn: 'Americas',      regions: ['North America', 'South America'] },

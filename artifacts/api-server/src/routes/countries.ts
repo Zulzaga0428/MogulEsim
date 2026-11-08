@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getPackagesByCountry, type AiraloPackage, getPackagesIndex } from "../lib/airalo";
-import { ESM_PREFIX, getCountryPlans, getCoveredCountries, type EsimergePlan } from "../lib/esimerge";
+import { ESM_PREFIX, getCountryPlans, getCoveredCountries, getRegionPlans, type EsimergePlan } from "../lib/esimerge";
 import { DAILY_DAYS, ESA_PREFIX, esaPriceInMnt, gbLabel, getCountryEsaPackages, type EsaPackage } from "../lib/esimaccess";
 import { WORLD_COUNTRIES, flagEmoji, slugFromName } from "../lib/world-countries";
 
@@ -230,7 +230,12 @@ function convertAiraloPackage(p: AiraloPackage, countrySlug: string, index: numb
   };
 }
 
+// Region and global plans cost several countries' worth; the country
+// markup (1.85) would put a 30-day Asia plan above 500,000. 1.5 keeps ~33%.
+const REGION_MARKUP = 1.5;
+
 export function esimergePriceInMnt(p: EsimergePlan, countrySlug: string | undefined): number {
+  if (p.scope !== "country") return roundToNearest500(p.price_usd * USD_TO_MNT * REGION_MARKUP);
   const unlimited = p.type === "unlimited";
   return overriddenPrice(countrySlug, p.validity_days, unlimited, p.price_usd) ?? priceFromUsd(p.price_usd);
 }
@@ -259,7 +264,7 @@ function convertEsimergePlan(p: EsimergePlan, countrySlug: string): Package {
     // Top-ups for these SIMs are not wired up yet (they need eSimerge's own
     // eSIM id, which the orders table does not store).
     rechargeable: false,
-    kind: "unlimited",
+    kind: unlimited ? "unlimited" : "fixed",
   };
 }
 
@@ -837,6 +842,31 @@ const EXTRA_BY_SLUG = new Map(WORLD_EXTRA.map(c => [c.slug, c]));
 const NAMED_CODES = new Set(WORLD_COUNTRIES.map(([iso]) => iso));
 let reportedUnnamed = "";
 
+/*
+ * Multi-country destinations, sold from eSimerge's region and global plans
+ * (2026-11-09). `code` is eSimerge's destination code; `region: "Region"`
+ * puts them on their own tab of the destinations page. Chosen for Mongolian
+ * travellers: the regions people actually cross in one trip.
+ */
+const REGION_DESTINATIONS = [
+  { id: "r-asia", slug: "asia", name: "Asia", nameMn: "Ази", flag: "🌏", code: "ass" },
+  { id: "r-sea", slug: "southeast-asia", name: "Southeast Asia", nameMn: "Зүүн өмнөд Ази", flag: "🌴", code: "assep" },
+  { id: "r-europe", slug: "europe", name: "Europe", nameMn: "Европ", flag: "🇪🇺", code: "eu" },
+  { id: "r-mena", slug: "middle-east", name: "Middle East", nameMn: "Ойрх Дорнод", flag: "🕌", code: "mena" },
+  { id: "r-nam", slug: "north-america", name: "North America", nameMn: "Хойд Америк", flag: "🗽", code: "nam" },
+  { id: "r-global", slug: "global", name: "Global", nameMn: "Дэлхий даяар", flag: "🌐", code: "glo" },
+] as const;
+// Mongolian names for a region's covered countries: the curated list first,
+// then the world table; eSimerge only gives English.
+function mnName(iso: string): string | undefined {
+  const slug = ISO_TO_SLUG[iso];
+  const curated = slug ? COUNTRIES.find((c) => c.slug === slug) : undefined;
+  if (curated) return curated.nameMn;
+  return WORLD_COUNTRIES.find(([code]) => code === iso)?.[2];
+}
+
+const REGION_BY_SLUG = new Map<string, (typeof REGION_DESTINATIONS)[number]>(REGION_DESTINATIONS.map((r) => [r.slug, r]));
+
 function findCountry(slug: string) {
   const curated = COUNTRIES.find(c => c.slug === slug);
   if (curated) return { country: curated, iso: SLUG_TO_ISO[slug] as string | undefined, curated: true };
@@ -886,12 +916,37 @@ router.get("/countries", async (_req, res) => {
     }
   }
 
-  const countries = [...curated, ...extra.sort((a, b) => a.name.localeCompare(b.name))];
+  const regions = (await Promise.all(REGION_DESTINATIONS.map(async ({ code, ...r }) => {
+    const n = await getRegionPlans(code).then((x) => x.plans.length).catch(() => 0);
+    return { ...r, region: "Region", packageCount: n };
+  }))).filter((r) => r.packageCount > 0);
+
+  const countries = [...regions, ...curated, ...extra.sort((a, b) => a.name.localeCompare(b.name))];
   res.json({ countries });
 });
 
 router.get("/countries/:slug/packages", async (req, res) => {
   const { slug } = req.params;
+
+  const region = REGION_BY_SLUG.get(slug);
+  if (region) {
+    const { code, ...meta } = region;
+    const country = { ...meta, region: "Region" };
+    try {
+      const { plans, coverage } = await getRegionPlans(code);
+      const packages = plans
+        .map((p) => convertEsimergePlan(p, slug))
+        .sort((a, b) => a.validity - b.validity || a.dataAmount - b.dataAmount);
+      const named = coverage
+        .map((c) => ({ code: c.code, name: c.name, nameMn: mnName(c.code) ?? c.name }))
+        .sort((a, b) => a.nameMn.localeCompare(b.nameMn, "mn"));
+      res.json({ country: { ...country, packageCount: packages.length }, packages, coverage: named });
+    } catch (err) {
+      console.error(`[eSimerge] Region ${slug} unavailable:`, err);
+      res.json({ country: { ...country, packageCount: 0 }, packages: [], coverage: [] });
+    }
+    return;
+  }
   const found = findCountry(slug);
   if (!found) {
     res.status(404).json({ error: "not_found", message: "Country not found" });

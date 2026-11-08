@@ -178,6 +178,18 @@ ids for its plans start with `esm:` — that prefix is how pricing
   table get a price on the straight line between their two neighbours
   (`interpolatedFlat`); outside the table (1–2 days) the formula applies.
 
+### Regions (multi-country)
+
+`REGION_DESTINATIONS` in `routes/countries.ts`: Asia (`ass`), Southeast Asia
+(`assep`), Europe (`eu`), Middle East (`mena`), North America (`nam`),
+Global (`glo`) — eSimerge region/global destination codes (run
+`listRegionCodes()` for the full ~22). Served with `region: "Region"` (own
+tab on /countries), unlimited + fixed from eSimerge, plus `coverage[]`
+(Mongolian names via `mnName`). Priced at cost × 3450 × 1.5
+(`REGION_MARKUP`), not 1.85. The destination list itself now comes from
+eSimerge coverage (169 countries), Airalo's index only when configured;
+Asialink/Eurolink are hidden without Airalo.
+
 ## eSIM Access (fixed GB and daily plans)
 
 `lib/esimaccess.ts`. HMAC-signed POSTs, keys `ESIMACCESS_ACCESS_CODE` /

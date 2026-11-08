@@ -84,6 +84,9 @@ export default function CountryPackages() {
   const country = data?.country;
   const packages = data?.packages || [];
   const selectedPkg = packages.find(p => p.id === selected);
+  // Region pages also list the countries their plans cover.
+  const coverage = ((data as { coverage?: { code: string; name: string; nameMn?: string }[] } | undefined)?.coverage) ?? [];
+  const [showAllCoverage, setShowAllCoverage] = useState(false);
   type Kind = 'unlimited' | 'fixed' | 'daily';
   const kindOf = (p: (typeof packages)[number]): Kind =>
     ((p as { kind?: Kind }).kind) ?? (p.isUnlimited ? 'unlimited' : 'fixed');
@@ -164,7 +167,7 @@ export default function CountryPackages() {
             landing's sky so the banner is never an empty dark box. */}
         {(
           <img
-            src={COUNTRY_PHOTOS[slug] ?? `${import.meta.env.BASE_URL}images/brand/hero-desktop.webp`}
+            src={COUNTRY_PHOTOS[slug] ?? `${import.meta.env.BASE_URL}images/brand/dt-hero.webp`}
             alt={country.name}
             className="absolute inset-0 w-full h-full object-cover"
             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -175,19 +178,24 @@ export default function CountryPackages() {
 
         {/* Flag badge bottom center */}
         {(() => {
+          // Regions carry a picture emoji (🌏), not a flag pair.
           const code = flagEmojiToCode(country.flag);
-          return code ? (
+          return (
             <div className="relative mb-4 flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-full px-3 py-1.5">
-              <img
-                src={`https://flagcdn.com/w40/${code}.png`}
-                alt={country.name}
-                className="w-6 h-4 object-cover rounded-sm"
-              />
+              {code.length === 2 ? (
+                <img
+                  src={`https://flagcdn.com/w40/${code}.png`}
+                  alt={country.name}
+                  className="w-6 h-4 object-cover rounded-sm"
+                />
+              ) : (
+                <span className="text-lg leading-none">{country.flag}</span>
+              )}
               <span className="text-white text-sm font-semibold">
                 {lang === 'mn' ? country.nameMn : country.name}
               </span>
             </div>
-          ) : null;
+          );
         })()}
 
         {/* Back button */}
@@ -207,9 +215,36 @@ export default function CountryPackages() {
           <span className="text-foreground text-xs font-bold">4G/5G eSIM</span>
           <span className="text-muted-foreground text-xs">· {packages.length} {lang === 'mn' ? 'багц' : 'plans'}</span>
         </div>
-        <p className="text-muted-foreground/60 text-xs mt-1.5">
-          200+ {lang === 'mn' ? 'Улс орон · Дэлхийн бүх цэгт' : 'Countries · Worldwide Coverage'}
-        </p>
+        {coverage.length > 0 ? (
+          // A region page says exactly where its eSIM works.
+          <div className="mt-3">
+            <p className="text-xs font-bold text-foreground">
+              {lang === 'mn' ? `Хамрах улсууд (${coverage.length})` : `Covered countries (${coverage.length})`}
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {(showAllCoverage ? coverage : coverage.slice(0, 12)).map(c => (
+                <span key={c.code} className="inline-flex items-center gap-1 rounded-full bg-[#F4F4F5] px-2 py-0.5 text-[11px] font-medium text-foreground">
+                  <img src={`https://flagcdn.com/w20/${c.code.toLowerCase()}.png`} alt="" className="h-2.5 w-3.5 rounded-[2px] object-cover" loading="lazy" />
+                  {lang === 'mn' ? (c.nameMn ?? c.name) : c.name}
+                </span>
+              ))}
+              {coverage.length > 12 && (
+                <button
+                  onClick={() => setShowAllCoverage(v => !v)}
+                  className="rounded-full px-2 py-0.5 text-[11px] font-bold text-brand hover:underline"
+                >
+                  {showAllCoverage
+                    ? (lang === 'mn' ? 'Хураах' : 'Show less')
+                    : (lang === 'mn' ? `+${coverage.length - 12} бусад` : `+${coverage.length - 12} more`)}
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-muted-foreground/60 text-xs mt-1.5">
+            200+ {lang === 'mn' ? 'Улс орон · Дэлхийн бүх цэгт' : 'Countries · Worldwide Coverage'}
+          </p>
+        )}
       </div>
 
       {/* Plan list */}

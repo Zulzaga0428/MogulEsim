@@ -27,6 +27,8 @@ export interface EsimergePlan {
   type: string;
   country_code: string | null;
   destination_code?: string | null;
+  destination_name?: string | null;
+  coverage?: { country_code: string; country_name: string }[];
   data_mb: number | null;
   validity_days: number;
   price_usd: number;
@@ -81,55 +83,98 @@ export function esimergeLive(): boolean {
 // Whole catalog, country plans only, grouped by ISO code and cached like the
 // Airalo index. About 15 pages of 1000 against a 100/min limit.
 const CATALOG_TTL_MS = 2 * 60 * 60 * 1000;
-interface Catalog { byCountry: Map<string, EsimergePlan[]>; byId: Map<string, EsimergePlan>; at: number }
+interface Catalog {
+  byCountry: Map<string, EsimergePlan[]>;
+  /** Region and global plans by destination code ("ass", "eu", ...). */
+  byRegion: Map<string, EsimergePlan[]>;
+  /** Countries each region covers, from its plans' coverage[]. */
+  regionCoverage: Map<string, { code: string; name: string }[]>;
+  byId: Map<string, EsimergePlan>;
+  at: number;
+}
 let catalog: Catalog | null = null;
 let inFlight: Promise<Catalog> | null = null;
 
-async function fetchCatalog(): Promise<Catalog> {
+async function fetchScope(scope: "country" | "region" | "global"): Promise<EsimergePlan[]> {
   const all: EsimergePlan[] = [];
   for (let page = 1; page <= 40; page++) {
     const r = await call<{ data: EsimergePlan[]; meta?: { last_page?: number } }>(
       "GET",
-      `/catalog?scope=country&page=${page}&per_page=1000`,
+      `/catalog?scope=${scope}&page=${page}&per_page=1000`,
     );
     all.push(...(r.data || []));
     if (!r.meta?.last_page || page >= r.meta.last_page) break;
   }
+  return all.filter((p) => p.scope === scope);
+}
 
-  // Group by the country a plan is sold for. A destination such as
-  // "China Alt" reports the same country_code as "China"; its plans compete
-  // for the same slot below.
-  const grouped = new Map<string, EsimergePlan[]>();
-  for (const p of all) {
-    if (p.scope !== "country" || !p.country_code || !(p.price_usd > 0)) continue;
-    if (p.validity_days < 1 || p.validity_days > 30) continue;
-    // A plan with a fair-usage cap is not what we sell as unlimited.
-    if (p.type === "unlimited" && p.fair_usage) continue;
-    if (p.type !== "unlimited" && !(p.data_mb && p.data_mb > 0)) continue;
-    const list = grouped.get(p.country_code) ?? [];
-    list.push(p);
-    grouped.set(p.country_code, list);
-  }
+function sellable(p: EsimergePlan): boolean {
+  if (!(p.price_usd > 0)) return false;
+  if (p.validity_days < 1 || p.validity_days > 30) return false;
+  // A plan with a fair-usage cap is not what we sell as unlimited.
+  if (p.type === "unlimited" && p.fair_usage) return false;
+  if (p.type !== "unlimited" && !(p.data_mb && p.data_mb > 0)) return false;
+  return true;
+}
 
-  // One plan per (length, data) slot: the main destination wins over
-  // variants, the cheapest wins among equals.
-  const byCountry = new Map<string, EsimergePlan[]>();
-  const byId = new Map<string, EsimergePlan>();
-  for (const [code, plans] of grouped) {
-    const main = (x: EsimergePlan) => (x.destination_code ?? x.country_code) === code;
-    const slots = new Map<string, EsimergePlan>();
-    for (const p of plans) {
-      const slot = `${p.validity_days}:${p.type === "unlimited" ? "u" : p.data_mb}`;
-      const cur = slots.get(slot);
-      if (!cur || (main(p) && !main(cur)) || (main(p) === main(cur) && p.price_usd < cur.price_usd)) {
-        slots.set(slot, p);
-      }
+/**
+ * One plan per (length, data) slot. For countries the main destination wins
+ * over variants ("China" over "China Alt"); then the cheapest.
+ */
+function onePerSlot(plans: EsimergePlan[], code: string): EsimergePlan[] {
+  const main = (x: EsimergePlan) => (x.destination_code ?? x.country_code) === code;
+  const slots = new Map<string, EsimergePlan>();
+  for (const p of plans) {
+    const slot = `${p.validity_days}:${p.type === "unlimited" ? "u" : p.data_mb}`;
+    const cur = slots.get(slot);
+    if (!cur || (main(p) && !main(cur)) || (main(p) === main(cur) && p.price_usd < cur.price_usd)) {
+      slots.set(slot, p);
     }
-    const chosen = [...slots.values()];
+  }
+  return [...slots.values()];
+}
+
+function groupBy(plans: EsimergePlan[], key: (p: EsimergePlan) => string | null | undefined) {
+  const m = new Map<string, EsimergePlan[]>();
+  for (const p of plans) {
+    const k = key(p);
+    if (!k || !sellable(p)) continue;
+    const list = m.get(k) ?? [];
+    list.push(p);
+    m.set(k, list);
+  }
+  return m;
+}
+
+async function fetchCatalog(): Promise<Catalog> {
+  const [countryPlans, regionPlans, globalPlans] = await Promise.all([
+    fetchScope("country"),
+    fetchScope("region"),
+    fetchScope("global"),
+  ]);
+
+  const byId = new Map<string, EsimergePlan>();
+
+  // A destination such as "China Alt" reports the same country_code as
+  // "China"; its plans compete for the same slot.
+  const byCountry = new Map<string, EsimergePlan[]>();
+  for (const [code, plans] of groupBy(countryPlans, (p) => p.country_code)) {
+    const chosen = onePerSlot(plans, code);
     byCountry.set(code, chosen);
     for (const p of chosen) byId.set(p.id, p);
   }
-  return { byCountry, byId, at: Date.now() };
+
+  const byRegion = new Map<string, EsimergePlan[]>();
+  const regionCoverage = new Map<string, { code: string; name: string }[]>();
+  for (const [code, plans] of groupBy([...regionPlans, ...globalPlans], (p) => p.destination_code)) {
+    const chosen = onePerSlot(plans, code);
+    byRegion.set(code, chosen);
+    for (const p of chosen) byId.set(p.id, p);
+    const cov = plans.find((p) => p.coverage?.length)?.coverage ?? [];
+    regionCoverage.set(code, cov.map((c) => ({ code: c.country_code, name: c.country_name })));
+  }
+
+  return { byCountry, byRegion, regionCoverage, byId, at: Date.now() };
 }
 
 async function getCatalog(): Promise<Catalog> {
@@ -168,6 +213,20 @@ export async function getCoveredCountries(): Promise<Map<string, number> | null>
     console.error("[eSimerge] Catalog unavailable for the destination list:", err);
     return null;
   }
+}
+
+/** Plans and covered countries for a region/global destination code. */
+export async function getRegionPlans(code: string): Promise<{ plans: EsimergePlan[]; coverage: { code: string; name: string }[] }> {
+  if (!esimergeLive()) return { plans: [], coverage: [] };
+  const c = await getCatalog();
+  return { plans: c.byRegion.get(code) ?? [], coverage: c.regionCoverage.get(code) ?? [] };
+}
+
+/** Every region/global destination code in the catalog, for discovery. */
+export async function listRegionCodes(): Promise<{ code: string; name: string; plans: number }[]> {
+  if (!esimergeLive()) return [];
+  const c = await getCatalog();
+  return [...c.byRegion].map(([code, plans]) => ({ code, name: plans[0]?.destination_name ?? code, plans: plans.length }));
 }
 
 export async function getCountryPlans(countryCode: string): Promise<EsimergePlan[]> {
