@@ -6,7 +6,7 @@ import { createInvoice, checkPayment } from "../lib/qpay";
 import { findAiraloPackage, getSimTopups } from "../lib/airalo";
 import { findEsimergePlan, isEsimergePackage } from "../lib/esimerge";
 import { runFulfillment, type FulfillableOrder } from "../lib/fulfillment.js";
-import { findLocalPackage, overriddenPrice, priceFromUsd, slugForCountryCode } from "./countries";
+import { esimergePriceInMnt, findLocalPackage, overriddenPrice, priceFromUsd, slugForCountryCode } from "./countries";
 import { verifyUserToken } from "../lib/user-auth.js";
 
 const router: IRouter = Router();
@@ -27,10 +27,9 @@ async function resolvePriceInMnt(packageId: string): Promise<number | null> {
   // a plan no longer in the catalog must not be sold.
   if (isEsimergePackage(packageId)) {
     try {
-      const found = await findEsimergePlan(packageId);
-      if (!found) return null;
-      const { plan, slug } = found;
-      return overriddenPrice(slug, plan.validity_days, true, plan.price_usd) ?? priceFromUsd(plan.price_usd);
+      const plan = await findEsimergePlan(packageId);
+      if (!plan) return null;
+      return esimergePriceInMnt(plan, slugForCountryCode(plan.country_code!));
     } catch (err) {
       console.error(`[QPay] eSimerge price lookup failed for ${packageId}:`, err);
       return null;

@@ -1,28 +1,24 @@
 import QRCode from "qrcode";
 
 /**
- * eSimerge — second eSIM supplier, used for unlimited plans where it covers
- * more than Airalo does (China: Unicom + Telecom, Hong Kong and Macau, apps
- * reachable without a VPN).
+ * eSimerge — this shop's eSIM supplier (2026-11-08: Zulzaga chose it over
+ * Airalo for every country). It sells unlimited plans of every length from
+ * 1 to 30 days, and in China covers Unicom + Telecom, Hong Kong and Macau
+ * with apps reachable without a VPN.
  *
  * Our package ids for its plans carry an "esm:" prefix so pricing and
  * fulfillment can tell the supplier from the id alone. Live plan ids are
  * UUIDs and sandbox ids look like "esm_plan_…", so neither can be used as a
  * marker by itself.
  *
- * Nothing here runs unless ESIMERGE_API_KEY is set. The sandbox catalog holds
- * only demo plans (no China), so a sandbox key lists nothing and every
- * country keeps its Airalo packages.
+ * The catalog is used only with a live key. The sandbox catalog is eight demo
+ * plans (Saudi Arabia, Egypt) whose orders return fake eSIMs, so listing them
+ * would sell a customer a QR code that installs nothing. Until the key is
+ * live, countries keep the Airalo packages they had.
  */
 
 const BASE_URL = "https://portal.esimerge.com/api/public/v1";
 export const ESM_PREFIX = "esm:";
-
-// Countries whose unlimited packages come from eSimerge instead of Airalo:
-// our country slug -> eSimerge country code.
-export const ESIMERGE_UNLIMITED: Record<string, string> = {
-  china: "CN",
-};
 
 export interface EsimergePlan {
   id: string;
@@ -55,10 +51,6 @@ function apiKey(): string | null {
   return process.env.ESIMERGE_API_KEY?.trim() || null;
 }
 
-export function esimergeEnabled(): boolean {
-  return apiKey() !== null;
-}
-
 async function call<T>(method: "GET" | "POST", path: string, body?: unknown, idempotencyKey?: string): Promise<T> {
   const key = apiKey();
   if (!key) throw new Error("ESIMERGE_API_KEY is not set");
@@ -80,73 +72,92 @@ async function call<T>(method: "GET" | "POST", path: string, body?: unknown, ide
   return JSON.parse(text) as T;
 }
 
-// Unlimited plans per eSimerge country code, cached like the Airalo index.
-const CATALOG_TTL_MS = 2 * 60 * 60 * 1000;
-const catalog = new Map<string, { plans: EsimergePlan[]; at: number }>();
-const inFlight = new Map<string, Promise<EsimergePlan[]>>();
+/** True when the key is a live one; the sandbox catalog must never be sold. */
+export function esimergeLive(): boolean {
+  const key = apiKey();
+  return key !== null && !key.startsWith("esm_sk_test_");
+}
 
-async function fetchUnlimited(countryCode: string): Promise<EsimergePlan[]> {
+// Whole catalog, country plans only, grouped by ISO code and cached like the
+// Airalo index. About 15 pages of 1000 against a 100/min limit.
+const CATALOG_TTL_MS = 2 * 60 * 60 * 1000;
+interface Catalog { byCountry: Map<string, EsimergePlan[]>; byId: Map<string, EsimergePlan>; at: number }
+let catalog: Catalog | null = null;
+let inFlight: Promise<Catalog> | null = null;
+
+async function fetchCatalog(): Promise<Catalog> {
   const all: EsimergePlan[] = [];
-  // Filters are sent but not trusted (the sandbox ignores them), so the result
-  // is filtered again below and pagination is followed to the end.
-  for (let page = 1; page <= 30; page++) {
+  for (let page = 1; page <= 40; page++) {
     const r = await call<{ data: EsimergePlan[]; meta?: { last_page?: number } }>(
       "GET",
-      `/catalog?scope=country&country=${countryCode}&type=unlimited&page=${page}&per_page=1000`,
+      `/catalog?scope=country&page=${page}&per_page=1000`,
     );
     all.push(...(r.data || []));
     if (!r.meta?.last_page || page >= r.meta.last_page) break;
   }
 
-  const eligible = all.filter((p) =>
-    p.scope === "country" &&
-    p.type === "unlimited" &&
-    (p.country_code === countryCode || p.destination_code === countryCode) &&
+  // Group by the country a plan is sold for. A destination such as
+  // "China Alt" reports the same country_code as "China"; its plans compete
+  // for the same slot below.
+  const grouped = new Map<string, EsimergePlan[]>();
+  for (const p of all) {
+    if (p.scope !== "country" || !p.country_code || !(p.price_usd > 0)) continue;
+    if (p.validity_days < 1 || p.validity_days > 30) continue;
     // A plan with a fair-usage cap is not what we sell as unlimited.
-    !p.fair_usage &&
-    p.validity_days >= 1 && p.validity_days <= 30 &&
-    p.price_usd > 0,
-  );
-
-  // One plan per length. The main destination (e.g. "CN") wins over variants
-  // such as "China Alt"; among equals the cheapest wins.
-  const byDays = new Map<number, EsimergePlan>();
-  for (const p of eligible) {
-    const cur = byDays.get(p.validity_days);
-    const main = (x: EsimergePlan) => (x.destination_code ?? x.country_code) === countryCode;
-    if (!cur || (main(p) && !main(cur)) || (main(p) === main(cur) && p.price_usd < cur.price_usd)) {
-      byDays.set(p.validity_days, p);
-    }
+    if (p.type === "unlimited" && p.fair_usage) continue;
+    if (p.type !== "unlimited" && !(p.data_mb && p.data_mb > 0)) continue;
+    const list = grouped.get(p.country_code) ?? [];
+    list.push(p);
+    grouped.set(p.country_code, list);
   }
-  return [...byDays.values()].sort((a, b) => a.validity_days - b.validity_days);
+
+  // One plan per (length, data) slot: the main destination wins over
+  // variants, the cheapest wins among equals.
+  const byCountry = new Map<string, EsimergePlan[]>();
+  const byId = new Map<string, EsimergePlan>();
+  for (const [code, plans] of grouped) {
+    const main = (x: EsimergePlan) => (x.destination_code ?? x.country_code) === code;
+    const slots = new Map<string, EsimergePlan>();
+    for (const p of plans) {
+      const slot = `${p.validity_days}:${p.type === "unlimited" ? "u" : p.data_mb}`;
+      const cur = slots.get(slot);
+      if (!cur || (main(p) && !main(cur)) || (main(p) === main(cur) && p.price_usd < cur.price_usd)) {
+        slots.set(slot, p);
+      }
+    }
+    const chosen = [...slots.values()];
+    byCountry.set(code, chosen);
+    for (const p of chosen) byId.set(p.id, p);
+  }
+  return { byCountry, byId, at: Date.now() };
 }
 
-export async function getUnlimitedPlans(countryCode: string): Promise<EsimergePlan[]> {
-  if (!esimergeEnabled()) return [];
-  const hit = catalog.get(countryCode);
-  if (hit && Date.now() - hit.at < CATALOG_TTL_MS) return hit.plans;
-  let p = inFlight.get(countryCode);
-  if (!p) {
-    p = fetchUnlimited(countryCode)
-      .then((plans) => {
-        catalog.set(countryCode, { plans, at: Date.now() });
-        return plans;
-      })
-      .finally(() => inFlight.delete(countryCode));
-    inFlight.set(countryCode, p);
+async function getCatalog(): Promise<Catalog> {
+  if (catalog && Date.now() - catalog.at < CATALOG_TTL_MS) return catalog;
+  if (!inFlight) {
+    inFlight = fetchCatalog()
+      .then((c) => (catalog = c))
+      .finally(() => { inFlight = null; });
   }
-  return p;
+  try {
+    return await inFlight;
+  } catch (err) {
+    // Serve the last good catalog through an outage rather than going empty.
+    if (catalog) return catalog;
+    throw err;
+  }
+}
+
+/** Plans eSimerge sells for an ISO country code; empty without a live key. */
+export async function getCountryPlans(countryCode: string): Promise<EsimergePlan[]> {
+  if (!esimergeLive()) return [];
+  return (await getCatalog()).byCountry.get(countryCode) ?? [];
 }
 
 /** The plan behind one of our "esm:" package ids, or null if it is not sold. */
-export async function findEsimergePlan(packageId: string): Promise<{ plan: EsimergePlan; slug: string } | null> {
-  if (!isEsimergePackage(packageId)) return null;
-  const planId = packageId.slice(ESM_PREFIX.length);
-  for (const [slug, code] of Object.entries(ESIMERGE_UNLIMITED)) {
-    const plan = (await getUnlimitedPlans(code)).find((p) => p.id === planId);
-    if (plan) return { plan, slug };
-  }
-  return null;
+export async function findEsimergePlan(packageId: string): Promise<EsimergePlan | null> {
+  if (!isEsimergePackage(packageId) || !esimergeLive()) return null;
+  return (await getCatalog()).byId.get(packageId.slice(ESM_PREFIX.length)) ?? null;
 }
 
 /** Issue one eSIM. `idempotencyKey` must stay the same across retries of one order. */

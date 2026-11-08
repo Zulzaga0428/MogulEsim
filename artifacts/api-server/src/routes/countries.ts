@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getPackagesByCountry, type AiraloPackage, getPackagesIndex } from "../lib/airalo";
-import { ESIMERGE_UNLIMITED, ESM_PREFIX, getUnlimitedPlans, type EsimergePlan } from "../lib/esimerge";
+import { ESM_PREFIX, getCountryPlans, type EsimergePlan } from "../lib/esimerge";
 import { WORLD_COUNTRIES, flagEmoji, slugFromName } from "../lib/world-countries";
 
 const router: IRouter = Router();
@@ -229,19 +229,31 @@ function convertAiraloPackage(p: AiraloPackage, countrySlug: string, index: numb
   };
 }
 
+export function esimergePriceInMnt(p: EsimergePlan, countrySlug: string | undefined): number {
+  const unlimited = p.type === "unlimited";
+  return overriddenPrice(countrySlug, p.validity_days, unlimited, p.price_usd) ?? priceFromUsd(p.price_usd);
+}
+
+function dataLabel(mb: number): string {
+  if (mb < 1024) return `${mb} MB`;
+  const gb = mb / 1024;
+  return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
+}
+
 function convertEsimergePlan(p: EsimergePlan, countrySlug: string): Package {
+  const unlimited = p.type === "unlimited";
   return {
-    id: `${countrySlug}-esm-${p.validity_days}d`,
+    id: `${countrySlug}-esm-${p.id}`,
     packageId: ESM_PREFIX + p.id,
     name: p.name,
-    data: "Unlimited",
-    dataAmount: -1,
+    data: unlimited ? "Unlimited" : dataLabel(p.data_mb!),
+    dataAmount: unlimited ? -1 : p.data_mb!,
     validity: p.validity_days,
     price: p.price_usd,
     currency: "USD",
-    priceInMnt: overriddenPrice(countrySlug, p.validity_days, true, p.price_usd) ?? priceFromUsd(p.price_usd),
+    priceInMnt: esimergePriceInMnt(p, countrySlug),
     speed: "4G/5G",
-    isUnlimited: true,
+    isUnlimited: unlimited,
     networkType: "LTE/5G",
     // Top-ups for these SIMs are not wired up yet (they need eSimerge's own
     // eSIM id, which the orders table does not store).
@@ -250,23 +262,22 @@ function convertEsimergePlan(p: EsimergePlan, countrySlug: string): Package {
 }
 
 /**
- * For countries listed in ESIMERGE_UNLIMITED, swap Airalo's unlimited packages
- * for eSimerge's. Fixed-data packages stay on Airalo. When eSimerge has
- * nothing to offer (no key, sandbox key, outage) Airalo's list is returned
- * unchanged, so the country never goes empty.
+ * eSimerge's packages for a country, or null when it has none to offer (no
+ * live key, outage with nothing cached, country not covered). eSimerge is
+ * this shop's supplier; the caller falls back to Airalo only on null so a
+ * country never goes empty.
  */
-async function withEsimergeUnlimited(slug: string, packages: Package[]): Promise<Package[]> {
-  const code = ESIMERGE_UNLIMITED[slug];
-  if (!code) return packages;
+async function esimergePackages(iso: string | undefined, slug: string): Promise<Package[] | null> {
+  if (!iso) return null;
   try {
-    const plans = await getUnlimitedPlans(code);
-    if (plans.length === 0) return packages;
-    const esm = plans.map((p) => convertEsimergePlan(p, slug));
-    return [...packages.filter((p) => !p.isUnlimited), ...esm]
+    const plans = await getCountryPlans(iso);
+    if (plans.length === 0) return null;
+    return plans
+      .map((p) => convertEsimergePlan(p, slug))
       .sort((a, b) => a.validity - b.validity || a.dataAmount - b.dataAmount);
   } catch (err) {
-    console.error(`[eSimerge] Catalog fetch failed for ${slug}, keeping Airalo:`, err);
-    return packages;
+    console.error(`[eSimerge] Catalog unavailable for ${slug}, falling back to Airalo:`, err);
+    return null;
   }
 }
 
@@ -820,6 +831,12 @@ router.get("/countries/:slug/packages", async (req, res) => {
   }
   const { country, iso: isoCode } = found;
 
+  const esm = await esimergePackages(isoCode ?? undefined, slug);
+  if (esm) {
+    res.json({ country: { ...country, packageCount: esm.length }, packages: esm });
+    return;
+  }
+
   // Destinations outside the curated list have no fallback catalogue: made-up
   // package ids there would take the money and then fail at Airalo. When
   // Airalo can't answer they show no packages rather than invented ones.
@@ -851,7 +868,7 @@ router.get("/countries/:slug/packages", async (req, res) => {
     }
     // Sort by validity days, then by data amount
     const sorted = airaloPackages.sort((a, b) => a.day - b.day || a.amount - b.amount);
-    const packages = await withEsimergeUnlimited(slug, sorted.map((p, i) => convertAiraloPackage(p, slug, i)));
+    const packages = sorted.map((p, i) => convertAiraloPackage(p, slug, i));
     res.json({ country: { ...country, packageCount: packages.length }, packages });
   } catch (err) {
     console.error(`[Airalo] Package fetch failed for ${slug}, using fallback:`, err);
