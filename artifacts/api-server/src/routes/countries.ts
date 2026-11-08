@@ -108,15 +108,17 @@ const EURO_FLAT = { 3: 35000, 5: 51500, 7: 65500, 10: 83500, 15: 158500, 30: 224
 const CHINA_FLAT = { 3: 38500, 5: 57000, 7: 81000, 10: 107500, 15: 171500, 30: 321500 };
 
 const PRICE_OVERRIDES: Record<string, Record<number, number>> = {
-  "japan":       { 3: 34000, 5: 49500, 7: 69500, 10: 91500, 15: 145000, 30: 270000 },
-  "south-korea": { 3: 34000, 5: 49500, 7: 69500, 10: 91500, 15: 145000, 30: 270000 },
+  // 2026-11-09: the five countries Mongolians buy most share the China price;
+  // Japan 30D stays at 270,000 (Zulzaga).
+  "japan":       { ...CHINA_FLAT, 30: 270000 },
+  "south-korea": CHINA_FLAT,
   "asialink":    { 3: 34000, 5: 49500, 7: 69500, 10: 91500, 15: 145000, 30: 270000 },
   "eurolink":    { 3: 37000, 5: 53500, 7: 67500, 10: 85500, 15: 160500, 30: 226500 },
   "china":       CHINA_FLAT,
   "thailand":    ASIA_FLAT,
-  "vietnam":     ASIA_FLAT,
+  "vietnam":     CHINA_FLAT,
   "singapore":   ASIA_FLAT,
-  "malaysia":    ASIA_FLAT,
+  "malaysia":    CHINA_FLAT,
   "indonesia":   ASIA_FLAT,
   "philippines": ASIA_FLAT,
   "hong-kong":   ASIA_FLAT,
