@@ -171,7 +171,7 @@ export default function CountryPackages() {
           />
         )}
         {/* Dark overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#3A0306]/85 via-black/20 to-black/10" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0F2A3A]/85 via-black/20 to-black/10" />
 
         {/* Flag badge bottom center */}
         {(() => {

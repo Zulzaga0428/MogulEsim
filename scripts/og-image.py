@@ -55,24 +55,24 @@ def stroke(d, pts, r, fill):
 
 
 def share_card():
-    # Red hero with white type: the photo sits right, the copy on the plain
-    # red left half, as on the landing.
+    # DataTai: deep teal with white type, the hero art (phone, globe,
+    # suitcase) on the right, as on the landing.
     W, H = 1200, 630
     img = Image.new("RGBA", (W, H))
     g = ImageDraw.Draw(img)
-    top, bottom = (142, 7, 14), (97, 1, 6)
+    top, bottom = (9, 122, 145), (8, 52, 72)
     for y in range(H):
         f = y / H
         g.line([(0, y), (W, y)], fill=tuple(int(top[i] + (bottom[i] - top[i]) * f) for i in range(3)))
 
-    photo = Image.open(IMAGES + "hero-desktop.webp").convert("RGBA")
-    ph = int(H * 0.9)
+    photo = Image.open(IMAGES + "dt-hero.webp").convert("RGBA")
+    ph = int(H * 0.8)
     photo = photo.resize((int(photo.width * ph / photo.height), ph), Image.LANCZOS)
-    photo = photo.crop((photo.width - 700, 0, photo.width, ph))
+    photo = photo.crop((photo.width - 540, 0, photo.width, ph))
     fade = Image.new("L", photo.size, 255)
     fd = ImageDraw.Draw(fade)
-    for x in range(160):
-        fd.line([(x, 0), (x, ph)], fill=int(255 * x / 160))
+    for x in range(200):
+        fd.line([(x, 0), (x, ph)], fill=int(255 * x / 200))
     edge = Image.new("L", photo.size, 255)
     ed = ImageDraw.Draw(edge)
     for y in range(90):
@@ -83,7 +83,7 @@ def share_card():
 
     d = ImageDraw.Draw(img)
     stroke(d, infinity_points(92, 78, 60, 600), 3.5, WHITE)
-    d.text((136, 58), brand["name"].upper(), font=font(30, b"ExtraBold"), fill=WHITE)
+    d.text((136, 58), brand["name"], font=font(32, b"ExtraBold"), fill=WHITE)
 
     bf = font(20, b"Bold")
     d.text((64, 150), card["badge"].upper(), font=bf, fill=(255, 255, 255, 215))

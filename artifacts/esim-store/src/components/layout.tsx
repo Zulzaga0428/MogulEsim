@@ -37,12 +37,12 @@ function UserAvatar({ user }: { user: any }) {
 function Wordmark({ small = false, light = false }: { small?: boolean; light?: boolean }) {
   return (
     <span className="flex items-center gap-2">
-      <InfinityIcon className={`${small ? 'h-7 w-7' : 'h-9 w-9'} ${light ? 'text-white' : 'text-brand'}`} strokeWidth={2.8} />
+      <InfinityIcon className={`${small ? 'h-8 w-8' : 'h-10 w-10'} ${light ? 'text-white' : 'text-brand'}`} strokeWidth={2.6} />
       <span className="flex flex-col leading-none">
-        <span className={`font-display font-extrabold uppercase tracking-wide ${light ? 'text-white' : 'text-[#111]'} ${small ? 'text-sm' : 'text-base'}`}>
+        <span className={`font-display font-extrabold tracking-tight ${light ? 'text-white' : 'text-[#0F2A3A]'} ${small ? 'text-lg' : 'text-[22px]'}`}>
           {BRAND.name}
         </span>
-        <span className={`mt-0.5 text-[10px] font-medium ${light ? 'text-white/75' : 'text-[#555]'}`}>{BRAND.tagline}</span>
+        <span className={`mt-0.5 text-[11px] font-medium ${light ? 'text-white/75' : 'text-[#33505E]'}`}>{BRAND.tagline}</span>
       </span>
     </span>
   );
@@ -51,8 +51,10 @@ function Wordmark({ small = false, light = false }: { small?: boolean; light?: b
 export function Layout({ children }: { children: React.ReactNode }) {
   const { t, lang, setLang } = useLanguage();
   const [location, setLocation] = useLocation();
-  // On the home page the header floats, transparent, over the red hero.
-  const overHero = location === '/';
+  // The DataTai hero is a light sky, so the header is the same white bar on
+  // every page (the red-hero floating header of the template is not used).
+  const overHero = false;
+  void location;
   const { user, loading, signOut } = useAuth();
   const [authModal, setAuthModal] = useState<null | 'login' | 'register'>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -85,7 +87,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // carries the same links.
   const navLinks = [
     { href: '/countries', label: lang === 'mn' ? 'Улсууд' : 'Destinations' },
-    { href: '/how-it-works', label: lang === 'mn' ? 'Хэрхэн ажилладаг' : 'How it works' },
+    { href: '/how-it-works', label: lang === 'mn' ? 'Хэрхэн ашиглах' : 'How to use' },
     { href: '/about', label: lang === 'mn' ? 'Бидний тухай' : 'About us' },
     { href: '/help', label: lang === 'mn' ? 'Тусламж' : 'Help' },
   ];
@@ -98,7 +100,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <header className={overHero
         ? 'absolute inset-x-0 top-0 z-50 w-full'
         : 'sticky top-0 z-50 w-full border-b border-black/5 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70'}>
-        <div className={`container max-w-7xl mx-auto px-4 flex items-center justify-between ${overHero ? 'h-20 md:px-10' : 'h-16'}`}>
+        <div className={`container max-w-7xl mx-auto px-4 flex items-center justify-between ${overHero ? 'h-20 md:px-10' : 'h-16 md:h-[72px]'}`}>
           <div className="flex items-center gap-3">
             <Link href="/" className="flex items-center" aria-label={BRAND.name}>
               <Wordmark light={overHero} />
@@ -106,7 +108,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
             <nav className="ml-6 hidden md:flex items-center gap-1">
               {navLinks.map(l => (
-                <Link key={l.href} href={l.href} className={`px-3 py-2 text-sm font-medium transition-colors ${overHero ? 'text-white/85 hover:text-white' : 'text-muted-foreground hover:text-foreground'}`}>
+                <Link key={l.href} href={l.href} className={`px-3 py-2 text-sm font-semibold transition-colors ${overHero ? 'text-white/85 hover:text-white' : 'text-[#1E3A48] hover:text-brand'}`}>
                   {l.label}
                 </Link>
               ))}
@@ -123,7 +125,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <span className="uppercase">{lang === 'mn' ? 'MN' : 'EN'}</span>
             </button>
 
-            <Link href="/countries" className={`hidden sm:inline-flex items-center rounded-full px-4 h-9 text-sm font-semibold ${overHero ? 'bg-white text-brand hover:bg-[#FFF5F5]' : 'bg-brand text-on-brand hover:brightness-95'}`}>
+            <Link href="/countries" className="hidden sm:inline-flex items-center rounded-full px-5 h-9 text-sm font-bold text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] shadow-[0_6px_16px_color-mix(in_srgb,var(--accent)_30%,transparent)]">
               {lang === 'mn' ? 'eSIM авах' : 'Get eSIM'}
             </Link>
 
@@ -191,7 +193,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   )}
                 </div>
               ) : (
-                <Button size="sm" variant="outline" className={`text-xs px-3 h-8 rounded-full ${overHero ? 'bg-transparent border-white text-white hover:bg-white hover:text-brand' : 'bg-white border-[#111] text-[#111] hover:bg-[#111] hover:text-white'}`} onClick={() => setAuthModal('login')}>
+                <Button size="sm" variant="outline" className={`text-xs px-3 h-8 rounded-full ${overHero ? 'bg-transparent border-white text-white hover:bg-white hover:text-brand' : 'bg-white border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white'}`} onClick={() => setAuthModal('login')}>
                   {t('login')}
                 </Button>
               )
@@ -206,7 +208,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <AiChat />
 
-      <footer className="bg-[#151515]">
+      <footer className="bg-[#0F2A3A]">
         <div className="container max-w-7xl mx-auto px-4 py-8 flex flex-col md:flex-row justify-between items-center gap-5">
           <Wordmark small light />
           <nav className="flex flex-wrap justify-center gap-x-5 gap-y-2">

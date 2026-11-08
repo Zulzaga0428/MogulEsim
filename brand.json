@@ -1,33 +1,34 @@
 {
   "$comment": "The one file to change when cloning this shop into a new brand. Read by the storefront (name, colours, page <head>), the API (QPay invoices, Airalo orders, support chat) and scripts/og-image.py. See CLONING.md.",
-  "name": "Хязгааргүй",
-  "tagline": "eSIM",
-  "siteTitle": "Хязгааргүй eSIM — хязгааргүй дататай аял",
-  "shareTitle": "Хязгааргүй eSIM — Мянган бээрийн аялал нэг алхмаас эхэлдэг",
-  "description": "200+ улсад хязгааргүй дататай eSIM. QPay-ээр төлөөд QR кодоо шууд аваарай.",
-  "invoicePrefix": "HZ",
-  "qpayBranchCode": "HYZGAARGUI",
+  "name": "DataTai",
+  "tagline": "Хязгааргүй eSIM",
+  "siteTitle": "DataTai — аяллын хязгааргүй eSIM",
+  "shareTitle": "DataTai — Дэлхийн хаана ч холбогдсон бай",
+  "description": "Аяллын eSIM: хязгааргүй, GB болон өдрийн багц. SIM карт солихгүй, QPay-ээр төлөөд QR кодоо шууд аваарай.",
+  "invoicePrefix": "DT",
+  "qpayBranchCode": "DATATAI",
   "shareCard": {
     "$comment": "Text on public/og-image.jpg, the picture shown when a link to the site is shared. Rebuild it with: python scripts/og-image.py",
-    "badge": "200+ улс  ·  Хязгааргүй дата",
+    "badge": "Хязгааргүй  ·  GB  ·  Өдрийн багц",
     "headline": [
-      "Мянган бээрийн",
-      "аялал нэг алхмаас"
+      "Дэлхийн хаана ч"
     ],
-    "headlineAccent": "эхэлдэг.",
+    "headlineAccent": "холбогдсон бай.",
     "lines": [
-      "200+ улсад хязгааргүй дататай eSIM.",
-      "QPay-ээр төлөөд QR кодоо шууд аваарай."
+      "SIM карт солихгүй, шууд онлайнаар",
+      "идэвхжүүлээд датагаар аялаарай."
     ],
     "button": "eSIM авах  →"
   },
   "colors": {
-    "brand": "#D7141A",
-    "brandHover": "#B50F14",
-    "brandBorder": "#F6C2C4",
-    "brandSoft": "#FDF0F0",
-    "brandTint": "#FBE0E1",
-    "brandInk": "#A30E13",
-    "onBrand": "#FFFFFF"
+    "brand": "#0B9BB5",
+    "brandHover": "#08859C",
+    "brandBorder": "#A6DDE8",
+    "brandSoft": "#EAF7FA",
+    "brandTint": "#D3EFF5",
+    "brandInk": "#066A7D",
+    "onBrand": "#FFFFFF",
+    "accent": "#EE3A2C",
+    "accentHover": "#D42D20"
   }
 }
