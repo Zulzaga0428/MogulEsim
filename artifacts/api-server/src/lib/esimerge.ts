@@ -149,6 +149,27 @@ async function getCatalog(): Promise<Catalog> {
 }
 
 /** Plans eSimerge sells for an ISO country code; empty without a live key. */
+/**
+ * ISO code -> number of unlimited plans, for every country eSimerge covers.
+ * Drives the destination list now that Airalo is gone; null without a live
+ * key or when the catalog cannot be fetched.
+ */
+export async function getCoveredCountries(): Promise<Map<string, number> | null> {
+  if (!esimergeLive()) return null;
+  try {
+    const { byCountry } = await getCatalog();
+    const out = new Map<string, number>();
+    for (const [code, plans] of byCountry) {
+      const n = plans.filter((p) => p.type === "unlimited").length;
+      if (n > 0) out.set(code, n);
+    }
+    return out;
+  } catch (err) {
+    console.error("[eSimerge] Catalog unavailable for the destination list:", err);
+    return null;
+  }
+}
+
 export async function getCountryPlans(countryCode: string): Promise<EsimergePlan[]> {
   if (!esimergeLive()) return [];
   return (await getCatalog()).byCountry.get(countryCode) ?? [];

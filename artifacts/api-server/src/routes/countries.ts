@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getPackagesByCountry, type AiraloPackage, getPackagesIndex } from "../lib/airalo";
-import { ESM_PREFIX, getCountryPlans, type EsimergePlan } from "../lib/esimerge";
+import { ESM_PREFIX, getCountryPlans, getCoveredCountries, type EsimergePlan } from "../lib/esimerge";
 import { DAILY_DAYS, ESA_PREFIX, esaPriceInMnt, gbLabel, getCountryEsaPackages, type EsaPackage } from "../lib/esimaccess";
 import { WORLD_COUNTRIES, flagEmoji, slugFromName } from "../lib/world-countries";
 
@@ -849,26 +849,34 @@ function findCountry(slug: string) {
 }
 
 router.get("/countries", async (_req, res) => {
+  // Destinations come from what a supplier actually sells: eSimerge's
+  // catalog first (this shop's supplier), Airalo's index only while Airalo is
+  // configured. Before 2026-11-09 this asked Airalo alone, so removing its
+  // keys hid every country outside the curated list (53 left of ~200).
+  const covered = await getCoveredCountries();
+  const airaloOn = Boolean(process.env.AIRALO_CLIENT_ID && process.env.AIRALO_CLIENT_SECRET);
   let index: Map<string, AiraloPackage[]> | null = null;
-  try {
-    index = await getPackagesIndex();
-  } catch (err) {
-    // Without Airalo we can only vouch for the curated list and its fallback
-    // catalogue, so the extra destinations stay hidden until it answers.
-    console.error("[Countries] Airalo index unavailable, listing curated countries only:", err);
+  if (airaloOn) {
+    try {
+      index = await getPackagesIndex();
+    } catch (err) {
+      console.error("[Countries] Airalo index unavailable:", err);
+    }
   }
+  const countFor = (iso: string | undefined) =>
+    iso ? (covered?.get(iso) ?? index?.get(iso)?.length ?? 0) : 0;
 
-  const curated = COUNTRIES.map(c => {
-    const iso = SLUG_TO_ISO[c.slug];
-    const live = iso && index ? index.get(iso)?.length : undefined;
-    return { ...c, packageCount: live || (PACKAGES[c.slug] || DEFAULT_PACKAGES(c.id, c.slug)).length };
-  });
+  const curated = COUNTRIES
+    // Asialink / Eurolink are Airalo regional packages: unsellable without it.
+    .filter(c => SLUG_TO_ISO[c.slug] || airaloOn)
+    .map(c => {
+      const live = countFor(SLUG_TO_ISO[c.slug]);
+      return { ...c, packageCount: live || (PACKAGES[c.slug] || DEFAULT_PACKAGES(c.id, c.slug)).length };
+    });
 
-  const extra = index
-    ? WORLD_EXTRA
-        .filter(c => (index!.get(c.iso)?.length ?? 0) > 0)
-        .map(({ iso, ...c }) => ({ ...c, packageCount: index!.get(iso)!.length }))
-    : [];
+  const extra = WORLD_EXTRA
+    .filter(c => countFor(c.iso) > 0)
+    .map(({ iso, ...c }) => ({ ...c, packageCount: countFor(iso) }));
 
   if (index) {
     const unnamed = [...index.keys()].filter(code => !NAMED_CODES.has(code) && !ISO_TO_SLUG[code]).sort().join(",");
